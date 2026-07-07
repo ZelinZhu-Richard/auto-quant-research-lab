@@ -21,6 +21,7 @@ import pandas as pd
 from engine import config
 from engine.backtest import run_walkforward
 from engine.errors import EngineError
+from engine.io_guard import forbid_io
 from engine.ledger import ledger_entry_count, ledger_trial_sharpes_daily
 from engine.loader import data_manifest_sha256, load_panel
 from engine.metrics import (
@@ -49,7 +50,10 @@ def _load_signal_module(signal_path: Path):
     if spec is None or spec.loader is None:
         raise EngineError(f"cannot import {signal_path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # forbid_io: a signal could otherwise cache future data at IMPORT time
+    # and read it back during compute (import-time lookahead)
+    with forbid_io():
+        spec.loader.exec_module(module)
     if not hasattr(module, "compute_signal"):
         raise EngineError(f"{signal_path} does not define compute_signal")
     return module

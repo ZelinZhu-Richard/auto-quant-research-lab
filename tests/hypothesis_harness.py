@@ -21,6 +21,7 @@ from engine.harness import (
     assert_nan_handling,
     assert_no_lookahead,
 )
+from engine.io_guard import forbid_io
 from engine.loader import load_panel
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -37,7 +38,8 @@ def compute_signal():
     assert signal_path.exists(), f"{signal_path} not found"
     spec = importlib.util.spec_from_file_location("hypothesis_signal", signal_path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    with forbid_io():  # block import-time data caching (lookahead vector)
+        spec.loader.exec_module(module)
     assert hasattr(module, "compute_signal"), "signal.py lacks compute_signal"
     return module.compute_signal
 

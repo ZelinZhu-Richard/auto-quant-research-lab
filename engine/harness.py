@@ -22,21 +22,29 @@ Defense layers, and what each does NOT cover:
   truncation point) still applies.
 - The remaining leak vector is a signal doing its own I/O (e.g. loading
   data/train_val directly and computing tomorrow's return). Every harness
-  invocation therefore runs under an I/O guard that fails the signal if it
-  calls open()/pandas readers/pyarrow parquet readers at compute time.
-  A signal could still bypass this with exotic I/O (ctypes, sockets); the
-  structural backstops are the read-only Docker mounts and R2's physical
-  absence of holdout data.
+  invocation AND the S3 engine loop therefore run under engine/io_guard.py,
+  which blocks the common file/socket entry points at compute time. A
+  signal could still bypass it with ctypes or other exotica; the structural
+  backstops are the read-only Docker mounts, the egress allowlist, and R2's
+  physical absence of holdout data.
 """
-
-import builtins
-import contextlib
-from unittest import mock
 
 import numpy as np
 import pandas as pd
 
 from engine.errors import EngineError
+from engine.io_guard import PurityViolation, forbid_io
+
+__all__ = [
+    "LookaheadError",
+    "PurityViolation",
+    "SignalContractError",
+    "assert_deterministic",
+    "assert_index_alignment",
+    "assert_nan_handling",
+    "assert_no_lookahead",
+    "run_full_harness",
+]
 
 
 class LookaheadError(EngineError):
@@ -48,40 +56,8 @@ class SignalContractError(EngineError):
     """The signal violates the SPEC §2 output contract."""
 
 
-@contextlib.contextmanager
-def _forbid_io():
-    """Fail any compute_signal that reads files at call time (purity,
-    SPEC §2). Patches the common entry points: builtins.open, pandas
-    readers, pyarrow parquet readers."""
-
-    def _blocked(*_args, **_kwargs):
-        raise SignalContractError(
-            "signal performed file I/O during compute_signal (purity "
-            "violation, SPEC §2)"
-        )
-
-    patches = [mock.patch.object(builtins, "open", _blocked)]
-    for name in ("read_parquet", "read_csv", "read_json", "read_pickle",
-                 "read_feather", "read_orc", "read_hdf", "read_table"):
-        if hasattr(pd, name):
-            patches.append(mock.patch.object(pd, name, _blocked))
-    try:
-        import pyarrow.parquet as pq  # noqa: PLC0415 — optional guard target
-
-        for name in ("read_table", "ParquetFile", "read_pandas"):
-            if hasattr(pq, name):
-                patches.append(mock.patch.object(pq, name, _blocked))
-    except ImportError:
-        pass
-
-    with contextlib.ExitStack() as stack:
-        for p in patches:
-            stack.enter_context(p)
-        yield
-
-
 def _call(compute_signal, panel: pd.DataFrame) -> pd.Series:
-    with _forbid_io():
+    with forbid_io():
         return compute_signal(panel)
 
 
@@ -159,13 +135,14 @@ def assert_no_lookahead(
     slice-per-call design covers them (see module docstring).
     """
     dates = panel.index.get_level_values("date").unique().sort_values()
-    if len(dates) - min_history - 1 < n_samples:
+    eligible = dates[min_history:]
+    # need n_samples-1 picks from eligible[:-1] plus the always-tested last
+    # date => exactly len(eligible) >= n_samples suffices
+    if len(eligible) < n_samples:
         raise SignalContractError(
             f"panel too short: need >= {n_samples} sampled dates after "
-            f"{min_history} burn-in days, have {max(len(dates) - min_history - 1, 0)}"
+            f"{min_history} burn-in days, have {len(eligible)}"
         )
-
-    eligible = dates[min_history:]
     rng = np.random.default_rng(seed)
     picks = rng.choice(len(eligible) - 1, size=n_samples - 1, replace=False)
     sampled = [eligible[int(i)] for i in picks] + [eligible[-1]]  # always test the last date

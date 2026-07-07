@@ -119,9 +119,11 @@ are excluded from hit rate only).
 - `hit_rate = #(r > 0) / #(days with positions)`.
 - `turnover_annualized = mean(daily turnover) * 365` (gross multiples per
   year; 25x means the gross book turns 25 times a year).
-- `skew`, `kurtosis`: sample skewness and RAW (non-excess, Pearson)
-  kurtosis of daily net returns — kurtosis of a normal = 3. These feed the
-  DSR.
+- `skew`, `kurtosis`: with central moments `m_k = mean((r - mean(r))^k)`,
+  `skew g3 = m3 / m2^1.5` and RAW kurtosis `g4 = m4 / m2^2` — the
+  population-moment (uncorrected) estimators, exactly as used in Bailey &
+  López de Prado's DSR derivation. No Fisher bias correction; non-excess
+  convention (normal => g4 = 3). These feed the DSR.
 - Determinism: all metrics are pure functions of the return series;
   identical inputs give bit-identical outputs.
 

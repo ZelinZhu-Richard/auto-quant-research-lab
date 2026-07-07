@@ -7,6 +7,7 @@ import pytest
 
 from engine.harness import (
     LookaheadError,
+    PurityViolation,
     SignalContractError,
     assert_deterministic,
     assert_no_lookahead,
@@ -143,16 +144,42 @@ def test_file_io_during_compute_is_caught(synthetic_panel, tmp_path):
             fh.read(10)
         return clean_momentum(panel)
 
-    with pytest.raises(SignalContractError, match="I/O"):
-        run_full_harness(io_pandas, synthetic_panel)
-    with pytest.raises(SignalContractError, match="I/O"):
-        run_full_harness(io_open, synthetic_panel)
+    def io_pathlib(panel: pd.DataFrame) -> pd.Series:
+        side_file.read_bytes()
+        return clean_momentum(panel)
+
+    def io_pyarrow_dataset(panel: pd.DataFrame) -> pd.Series:
+        import pyarrow.dataset as pads
+        full = pads.dataset(str(side_file)).to_table().to_pandas()
+        closes = full.set_index(["date", "symbol"])["close"].unstack("symbol")
+        leaked = closes.pct_change(fill_method=None).shift(-1).stack()
+        return leaked.reindex(clean_momentum(panel).index)  # disguise
+
+    for leaky in (io_pandas, io_open, io_pathlib, io_pyarrow_dataset):
+        with pytest.raises(PurityViolation):
+            run_full_harness(leaky, synthetic_panel)
 
 
-def test_short_panel_refused():
-    """Panels unable to support >= 10 sampled dates must fail loudly."""
+def test_engine_backtest_also_enforces_purity(synthetic_panel, tmp_path):
+    """Defense in depth: S3's walk-forward itself blocks I/O, so a signal
+    that somehow skipped the harness still cannot self-load data."""
+    from engine.backtest import run_walkforward
+
+    side_file = tmp_path / "sneaky2.parquet"
+    synthetic_panel.to_parquet(side_file)
+
+    def io_signal(panel: pd.DataFrame) -> pd.Series:
+        pd.read_parquet(side_file)
+        return clean_momentum(panel)
+
+    dates = synthetic_panel.index.get_level_values("date").unique().sort_values()
+    with pytest.raises(PurityViolation):
+        run_walkforward(synthetic_panel, io_signal, start=dates[40], end=dates[45])
+
+
+def _tiny_panel(n_dates: int) -> pd.DataFrame:
     rng = np.random.default_rng(7)
-    dates = pd.date_range("2023-01-01", periods=15, freq="D", tz="UTC")
+    dates = pd.date_range("2023-01-01", periods=n_dates, freq="D", tz="UTC")
     frames = []
     for sym in ["A", "B", "C"]:
         closes = 100.0 * np.cumprod(1.0 + rng.normal(0, 0.01, len(dates)))
@@ -160,9 +187,42 @@ def test_short_panel_refused():
             "date": dates, "symbol": sym, "open": closes, "high": closes,
             "low": closes, "close": closes, "volume": 1.0,
         }))
-    small = (
+    return (
         pd.concat(frames).set_index(["date", "symbol"]).sort_index()
         [["open", "high", "low", "close", "volume"]]
     )
+
+
+def short_momentum(panel: pd.DataFrame) -> pd.Series:
+    closes = panel["close"].unstack("symbol")
+    return closes.pct_change(3, fill_method=None).stack()
+
+
+def test_short_panel_refused():
+    """Panels unable to support >= 10 sampled dates must fail loudly."""
     with pytest.raises(SignalContractError, match="too short"):
-        assert_no_lookahead(clean_momentum, small)
+        assert_no_lookahead(short_momentum, _tiny_panel(15))
+    # boundary: min_history(10) + n_samples(10) dates is EXACTLY enough
+    with pytest.raises(SignalContractError, match="too short"):
+        assert_no_lookahead(short_momentum, _tiny_panel(19))
+    assert_no_lookahead(short_momentum, _tiny_panel(20))  # must not raise
+
+
+def test_import_time_io_is_caught(tmp_path, synthetic_panel):
+    """A signal that caches data at module IMPORT time (before any compute
+    call) must be blocked too — both loaders wrap exec_module in the guard."""
+    from engine.errors import EngineError
+    from engine.run_backtest import _load_signal_module
+
+    side_file = tmp_path / "cache_me.parquet"
+    synthetic_panel.to_parquet(side_file)
+    signal_path = tmp_path / "signal.py"
+    signal_path.write_text(
+        "import pandas as pd\n"
+        f"CACHED = pd.read_parquet(r'{side_file}')\n"
+        "PARAMS = {}\n"
+        "def compute_signal(panel):\n"
+        "    return CACHED['close']\n"
+    )
+    with pytest.raises((PurityViolation, EngineError)):
+        _load_signal_module(signal_path)
