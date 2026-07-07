@@ -209,6 +209,24 @@ def test_environment_access_is_caught(synthetic_panel):
             run_full_harness(impure, synthetic_panel)
 
 
+def test_environb_allowlist_serves_bytes_and_blocks_rest(synthetic_panel):
+    """The bytes environment API honors the same allowlist (served as
+    bytes) and blocks everything else — SPEC §2 boundary parity."""
+    def env_allowed_bytes(panel: pd.DataFrame) -> pd.Series:
+        import os as _os
+        _os.environb.get(b"PANDAS_COPY_ON_WRITE")  # allowlisted: must not raise
+        return clean_momentum(panel)
+
+    def env_blocked_bytes(panel: pd.DataFrame) -> pd.Series:
+        import os as _os
+        _os.environb.get(b"PATH")
+        return clean_momentum(panel)
+
+    run_full_harness(env_allowed_bytes, synthetic_panel)
+    with pytest.raises(PurityViolation):
+        run_full_harness(env_blocked_bytes, synthetic_panel)
+
+
 def test_engine_backtest_also_enforces_purity(synthetic_panel, tmp_path):
     """Defense in depth: S3's walk-forward itself blocks I/O, so a signal
     that somehow skipped the harness still cannot self-load data."""

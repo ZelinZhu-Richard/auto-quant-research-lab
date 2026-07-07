@@ -94,29 +94,46 @@ _ENV_ALLOWLIST = frozenset({"PYARROW_IGNORE_TIMEZONE", "PANDAS_COPY_ON_WRITE"})
 
 
 class _BlockedEnviron:
-    """Stands in for os.environ inside guarded regions: allowlisted
-    library-internal keys resolve from a snapshot taken at guard entry;
-    any other read, any write, and any enumeration raises."""
+    """Stands in for os.environ/os.environb inside guarded regions:
+    allowlisted library-internal keys resolve from a snapshot taken at
+    guard entry (str or bytes keys both work, values in the mapping's
+    native type); any other read, any write, and any enumeration raises."""
 
-    def __init__(self, snapshot: dict[str, str]):
-        self._snapshot = {k: v for k, v in snapshot.items() if k in _ENV_ALLOWLIST}
+    def __init__(self, snapshot: dict):
+        self._snapshot = {}
+        for key, value in snapshot.items():
+            normalized = key.decode() if isinstance(key, bytes) else key
+            if normalized in _ENV_ALLOWLIST:
+                self._snapshot[normalized] = value
+
+    @staticmethod
+    def _norm(key):
+        if isinstance(key, bytes):
+            try:
+                return key.decode()
+            except UnicodeDecodeError:
+                return None
+        return key
 
     def __getitem__(self, key):
-        if key in _ENV_ALLOWLIST:
-            return self._snapshot[key]
+        normalized = self._norm(key)
+        if normalized in _ENV_ALLOWLIST:
+            return self._snapshot[normalized]
         _blocked()
 
     def __setitem__(self, _key, _value):
         _blocked()
 
     def get(self, key, default=None):
-        if key in _ENV_ALLOWLIST:
-            return self._snapshot.get(key, default)
+        normalized = self._norm(key)
+        if normalized in _ENV_ALLOWLIST:
+            return self._snapshot.get(normalized, default)
         _blocked()
 
     def __contains__(self, key):
-        if key in _ENV_ALLOWLIST:
-            return key in self._snapshot
+        normalized = self._norm(key)
+        if normalized in _ENV_ALLOWLIST:
+            return normalized in self._snapshot
         _blocked()
 
     def __iter__(self):
@@ -221,7 +238,10 @@ def forbid_io():
         stack.enter_context(mock.patch.object(os, "getenv", environ_proxy.get))
         stack.enter_context(mock.patch.object(os, "environ", environ_proxy))
         if hasattr(os, "environb"):
-            stack.enter_context(
-                mock.patch.object(os, "environb", _BlockedEnviron({})))
+            environb_proxy = _BlockedEnviron(dict(os.environb))
+            stack.enter_context(mock.patch.object(os, "environb", environb_proxy))
+            if hasattr(os, "getenvb"):
+                stack.enter_context(
+                    mock.patch.object(os, "getenvb", environb_proxy.get))
         stack.enter_context(_no_new_fds())
         yield
