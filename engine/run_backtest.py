@@ -148,15 +148,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--hypothesis", required=True, help="e.g. H001")
     parser.add_argument("--repo-root", default=".")
-    parser.add_argument("--data-dir", default=None,
-                        help="default: <repo-root>/data/train_val")
-    parser.add_argument("--ledger", default=None,
-                        help="default: <repo-root>/LEDGER.md")
     args = parser.parse_args(argv)
 
     repo_root = Path(args.repo_root).resolve()
-    data_dir = Path(args.data_dir) if args.data_dir else repo_root / "data" / "train_val"
-    ledger_path = Path(args.ledger) if args.ledger else repo_root / "LEDGER.md"
+    # R2: the ONLY data source is <repo-root>/data/train_val. Deliberately
+    # not overridable — no flag may point S3 at another dataset.
+    data_dir = repo_root / "data" / "train_val"
+    ledger_path = repo_root / "LEDGER.md"
     out_path = repo_root / "hypotheses" / args.hypothesis / "results.json"
 
     try:

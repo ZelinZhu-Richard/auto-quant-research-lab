@@ -33,8 +33,10 @@ def _validate_frame(symbol: str, df: pd.DataFrame) -> None:
         raise EngineError(f"{symbol}: columns {list(df.columns)} != {COLUMNS}")
     if not isinstance(df.index, pd.DatetimeIndex):
         raise EngineError(f"{symbol}: index is not a DatetimeIndex")
-    if df.index.tz is None:
-        raise EngineError(f"{symbol}: index is not tz-aware")
+    if df.index.tz is None or str(df.index.tz) != "UTC":
+        raise EngineError(f"{symbol}: index tz {df.index.tz!r} is not UTC")
+    if not (df.index == df.index.normalize()).all():
+        raise EngineError(f"{symbol}: non-midnight timestamps (daily bars required)")
     if df.index.name != "date":
         raise EngineError(f"{symbol}: index name {df.index.name!r} != 'date'")
     if not df.index.is_monotonic_increasing:

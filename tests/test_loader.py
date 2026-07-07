@@ -50,7 +50,31 @@ def test_loader_rejects_naive_index(tmp_path):
         index=pd.DatetimeIndex(["2023-01-01", "2023-01-02"], name="date"),
     )
     bad.to_parquet(tmp_path / "NAIVE.parquet")
-    with pytest.raises(EngineError, match="tz-aware"):
+    with pytest.raises(EngineError, match="not UTC"):
+        load_panel(tmp_path)
+
+
+def test_loader_rejects_non_utc_tz(tmp_path):
+    bad = pd.DataFrame(
+        {c: [1.0, 2.0] for c in ["open", "high", "low", "close", "volume"]},
+        index=pd.DatetimeIndex(
+            ["2023-01-01", "2023-01-02"], tz="US/Eastern", name="date"
+        ),
+    )
+    bad.to_parquet(tmp_path / "EASTERN.parquet")
+    with pytest.raises(EngineError, match="not UTC"):
+        load_panel(tmp_path)
+
+
+def test_loader_rejects_non_midnight_bars(tmp_path):
+    bad = pd.DataFrame(
+        {c: [1.0, 2.0] for c in ["open", "high", "low", "close", "volume"]},
+        index=pd.DatetimeIndex(
+            ["2023-01-01 12:00", "2023-01-02 12:00"], tz="UTC", name="date"
+        ),
+    )
+    bad.to_parquet(tmp_path / "NOON.parquet")
+    with pytest.raises(EngineError, match="non-midnight"):
         load_panel(tmp_path)
 
 

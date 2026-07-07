@@ -39,6 +39,9 @@ def run_walkforward(
     """
     if panel.index.names != ["date", "symbol"]:
         raise EngineError(f"panel index names {panel.index.names} != ['date','symbol']")
+    if not panel.index.is_monotonic_increasing:
+        # the positional no-lookahead cut below requires date-major sort
+        raise EngineError("panel index is not sorted; refusing to run")
 
     dates = panel.index.get_level_values("date").unique().sort_values()
     date_values = dates.values  # date-major sorted; used for positional cuts
@@ -50,6 +53,15 @@ def run_walkforward(
     first_pos = int(np.searchsorted(date_values, return_days[0].to_numpy()))
     if first_pos == 0:
         raise EngineError("no signal date exists before the first return day")
+
+    # SPEC §3/§5 define the lag in calendar days. A gap in the UNION
+    # calendar would silently compress a multi-day move into one return day
+    # and distort annualized metrics — fail loudly instead (=> infra-kill).
+    eval_dates = dates[(dates >= dates[first_pos - 1]) & (dates <= end)]
+    gaps = pd.Series(eval_dates).diff().dropna()
+    if (gaps != pd.Timedelta(days=1)).any():
+        raise EngineError("calendar gap inside evaluation window; engine "
+                          "requires a complete daily union calendar")
 
     closes = panel["close"].unstack("symbol")
     symbols = closes.columns
