@@ -188,6 +188,27 @@ def test_kernel_level_fd_guard_catches_exotic_io(synthetic_panel, tmp_path):
             run_full_harness(leaky, synthetic_panel)
 
 
+def test_environment_access_is_caught(synthetic_panel):
+    """SPEC §2 forbids environment access — nondeterministic input."""
+    def env_getenv(panel: pd.DataFrame) -> pd.Series:
+        __import__("os").getenv("HOME")
+        return clean_momentum(panel)
+
+    def env_environ(panel: pd.DataFrame) -> pd.Series:
+        import os as _os
+        _ = _os.environ.get("PATH")
+        return clean_momentum(panel)
+
+    def env_environ_getitem(panel: pd.DataFrame) -> pd.Series:
+        import os as _os
+        _ = _os.environ["PATH"]
+        return clean_momentum(panel)
+
+    for impure in (env_getenv, env_environ, env_environ_getitem):
+        with pytest.raises(PurityViolation):
+            run_full_harness(impure, synthetic_panel)
+
+
 def test_engine_backtest_also_enforces_purity(synthetic_panel, tmp_path):
     """Defense in depth: S3's walk-forward itself blocks I/O, so a signal
     that somehow skipped the harness still cannot self-load data."""

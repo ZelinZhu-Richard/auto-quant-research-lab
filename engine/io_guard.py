@@ -87,6 +87,59 @@ def _blocked(*_args, **_kwargs):
     )
 
 
+# Library-internal keys pandas/numpy/pyarrow legitimately consult at call
+# time. Everything else raises: environment access is nondeterministic
+# input (SPEC §2). Extend only via a review gate.
+_ENV_ALLOWLIST = frozenset({"PYARROW_IGNORE_TIMEZONE", "PANDAS_COPY_ON_WRITE"})
+
+
+class _BlockedEnviron:
+    """Stands in for os.environ inside guarded regions: allowlisted
+    library-internal keys resolve from a snapshot taken at guard entry;
+    any other read, any write, and any enumeration raises."""
+
+    def __init__(self, snapshot: dict[str, str]):
+        self._snapshot = {k: v for k, v in snapshot.items() if k in _ENV_ALLOWLIST}
+
+    def __getitem__(self, key):
+        if key in _ENV_ALLOWLIST:
+            return self._snapshot[key]
+        _blocked()
+
+    def __setitem__(self, _key, _value):
+        _blocked()
+
+    def get(self, key, default=None):
+        if key in _ENV_ALLOWLIST:
+            return self._snapshot.get(key, default)
+        _blocked()
+
+    def __contains__(self, key):
+        if key in _ENV_ALLOWLIST:
+            return key in self._snapshot
+        _blocked()
+
+    def __iter__(self):
+        _blocked()
+
+    def __len__(self):
+        _blocked()
+
+    def copy(self):
+        _blocked()
+
+    def keys(self):
+        _blocked()
+
+    def items(self):
+        _blocked()
+
+    def values(self):
+        _blocked()
+
+
+
+
 def _targets() -> list[tuple[object, str]]:
     targets: list[tuple[object, str]] = [
         (builtins, "open"),
@@ -156,10 +209,19 @@ def _no_new_fds():
 
 @contextlib.contextmanager
 def forbid_io():
-    """Every listed entry point raises PurityViolation while active, and
-    the kernel refuses new file descriptors for everything else."""
+    """Every listed entry point raises PurityViolation while active, the
+    environment is unreadable, and the kernel refuses new file descriptors
+    for everything else."""
+    environ_proxy = _BlockedEnviron(dict(os.environ))
     with contextlib.ExitStack() as stack:
         for obj, name in _targets():
             stack.enter_context(mock.patch.object(obj, name, _blocked))
+        for name in ("putenv", "unsetenv"):
+            stack.enter_context(mock.patch.object(os, name, _blocked))
+        stack.enter_context(mock.patch.object(os, "getenv", environ_proxy.get))
+        stack.enter_context(mock.patch.object(os, "environ", environ_proxy))
+        if hasattr(os, "environb"):
+            stack.enter_context(
+                mock.patch.object(os, "environb", _BlockedEnviron({})))
         stack.enter_context(_no_new_fds())
         yield

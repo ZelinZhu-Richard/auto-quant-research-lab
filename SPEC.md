@@ -39,8 +39,12 @@ def compute_signal(panel: pd.DataFrame) -> pd.Series
   no mutation of `panel`.
 - Purity enforcement boundary (normative): purity is enforced by four
   layers — (i) Python-level guards on the common read entry points
-  (open/io/os/pathlib/pandas/pyarrow/numpy/socket), raising
-  PurityViolation; (ii) kernel-level RLIMIT_NOFILE=0 inside every guarded
+  (open/io/os/pathlib/pandas/pyarrow/numpy/socket) AND on environment
+  access — os.environ/os.getenv/os.environb raise inside guarded regions
+  except for a frozen allowlist of library-internal keys
+  (PYARROW_IGNORE_TIMEZONE, PANDAS_COPY_ON_WRITE) that pandas itself
+  consults at call time, served from a snapshot taken at guard entry;
+  (ii) kernel-level RLIMIT_NOFILE=0 inside every guarded
   region, so ANY new file-descriptor allocation fails regardless of API
   (covers io.open_code, pyarrow C++ filesystems, ctypes, os.listdir);
   (iii) the harness truncate-and-compare check; (iv) container read-only
