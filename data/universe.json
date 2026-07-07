@@ -1,0 +1,311 @@
+{
+  "as_of": "2022-07-01",
+  "built_at": "2026-07-07T12:55:48.474541+00:00",
+  "method": "top-50 by median daily dollar volume over first 90 days of sample; must be listed within 30 days of start; stablecoins/wrapped/staked excluded",
+  "stated_limitations": [
+    "Coins delisted from Coinbase before today are absent from the candidate pool (survivorship residue at the venue level).",
+    "Single-venue volume; cross-exchange volume not considered."
+  ],
+  "coins": [
+    {
+      "symbol": "ETH",
+      "median_daily_dollar_vol": 522708564.977028,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "BTC",
+      "median_daily_dollar_vol": 477583601.682905,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "SOL",
+      "median_daily_dollar_vol": 62322587.829629995,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "ADA",
+      "median_daily_dollar_vol": 37790641.654612005,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "SHIB",
+      "median_daily_dollar_vol": 25717013.89221492,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "AVAX",
+      "median_daily_dollar_vol": 20095474.673985,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "LINK",
+      "median_daily_dollar_vol": 18847728.340695,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "ATOM",
+      "median_daily_dollar_vol": 15636221.308400001,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "DOGE",
+      "median_daily_dollar_vol": 13963433.6842,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "LTC",
+      "median_daily_dollar_vol": 13497456.162435755,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "DOT",
+      "median_daily_dollar_vol": 10024738.0711135,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "ETC",
+      "median_daily_dollar_vol": 9696840.376552455,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "APE",
+      "median_daily_dollar_vol": 9511236.203485,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "ALGO",
+      "median_daily_dollar_vol": 7448390.07845,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "XLM",
+      "median_daily_dollar_vol": 7094001.361846,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "UNI",
+      "median_daily_dollar_vol": 7089458.737109406,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "AAVE",
+      "median_daily_dollar_vol": 6239638.77529,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "FIL",
+      "median_daily_dollar_vol": 5241684.539156,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "ICP",
+      "median_daily_dollar_vol": 4375273.790755449,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "CRV",
+      "median_daily_dollar_vol": 4369856.015237,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "YFI",
+      "median_daily_dollar_vol": 4146110.964915475,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "BCH",
+      "median_daily_dollar_vol": 4139268.588511021,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "MANA",
+      "median_daily_dollar_vol": 4106124.573603,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "JASMY",
+      "median_daily_dollar_vol": 4086122.5446,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "QNT",
+      "median_daily_dollar_vol": 3749237.099225,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "SNX",
+      "median_daily_dollar_vol": 3325856.8546829997,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "COMP",
+      "median_daily_dollar_vol": 2539315.5535850003,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "OP",
+      "median_daily_dollar_vol": 2530163.88092,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "GRT",
+      "median_daily_dollar_vol": 2497927.0399400005,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "XTZ",
+      "median_daily_dollar_vol": 2426768.799485,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "LRC",
+      "median_daily_dollar_vol": 2199085.0768560683,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "CHZ",
+      "median_daily_dollar_vol": 2067268.43804,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "CRO",
+      "median_daily_dollar_vol": 1972378.97725,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "ENS",
+      "median_daily_dollar_vol": 1893502.40709,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "SPELL",
+      "median_daily_dollar_vol": 1511974.4780833,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "ZEC",
+      "median_daily_dollar_vol": 1368412.3262122096,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "TRB",
+      "median_daily_dollar_vol": 1215255.2622,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "SUSHI",
+      "median_daily_dollar_vol": 1143285.995391,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "AMP",
+      "median_daily_dollar_vol": 1131804.55807,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "IMX",
+      "median_daily_dollar_vol": 1125335.4577285,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "ACH",
+      "median_daily_dollar_vol": 1050379.177843,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "ROSE",
+      "median_daily_dollar_vol": 1020485.5115855001,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "SAND",
+      "median_daily_dollar_vol": 972132.466561,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "KNC",
+      "median_daily_dollar_vol": 942708.62852,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "NMR",
+      "median_daily_dollar_vol": 922046.73239,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "AXS",
+      "median_daily_dollar_vol": 910096.3248400001,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "ANKR",
+      "median_daily_dollar_vol": 892265.062475,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "RLC",
+      "median_daily_dollar_vol": 852181.0997869999,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "FLOW",
+      "median_daily_dollar_vol": 807695.5123775001,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    },
+    {
+      "symbol": "SKL",
+      "median_daily_dollar_vol": 727045.32177,
+      "first_bar": "2022-07-01",
+      "last_bar": "2026-07-06"
+    }
+  ]
+}
