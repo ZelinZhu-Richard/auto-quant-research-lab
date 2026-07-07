@@ -99,3 +99,70 @@ def test_inf_values_are_caught(synthetic_panel):
 
     with pytest.raises(SignalContractError, match="inf"):
         run_full_harness(infinite, synthetic_panel)
+
+
+def test_last_date_only_clean_signal_passes(synthetic_panel):
+    """SPEC §2 permits returning only the last date's cross-section."""
+    def last_date_only(panel: pd.DataFrame) -> pd.Series:
+        sig = clean_momentum(panel)
+        last = sig.index.get_level_values(0).max()
+        return sig[sig.index.get_level_values(0) == last]
+
+    run_full_harness(last_date_only, synthetic_panel)
+
+
+def test_fabricated_future_dates_are_caught(synthetic_panel):
+    """A truncated run may never emit dates beyond its truncation point."""
+    dates = synthetic_panel.index.get_level_values("date").unique().sort_values()
+    all_dates, symbols = dates, ["S00", "S01"]
+
+    def fabricator(panel: pd.DataFrame) -> pd.Series:
+        # always emits the full calendar, even when handed truncated data
+        idx = pd.MultiIndex.from_product(
+            [all_dates, symbols], names=["date", "symbol"]
+        )
+        return pd.Series(1.0, index=idx)
+
+    with pytest.raises(LookaheadError, match="fabricated"):
+        assert_no_lookahead(fabricator, synthetic_panel)
+
+
+def test_file_io_during_compute_is_caught(synthetic_panel, tmp_path):
+    """The real leak vector: a signal that loads data itself instead of
+    using the panel it was handed. Must fail the purity guard."""
+    side_file = tmp_path / "sneaky.parquet"
+    synthetic_panel.to_parquet(side_file)
+
+    def io_pandas(panel: pd.DataFrame) -> pd.Series:
+        full = pd.read_parquet(side_file)  # bypasses the truncation
+        closes = full["close"].unstack("symbol")
+        return closes.pct_change(fill_method=None).shift(-1).stack()
+
+    def io_open(panel: pd.DataFrame) -> pd.Series:
+        with open(side_file, "rb") as fh:  # noqa: PTH123
+            fh.read(10)
+        return clean_momentum(panel)
+
+    with pytest.raises(SignalContractError, match="I/O"):
+        run_full_harness(io_pandas, synthetic_panel)
+    with pytest.raises(SignalContractError, match="I/O"):
+        run_full_harness(io_open, synthetic_panel)
+
+
+def test_short_panel_refused():
+    """Panels unable to support >= 10 sampled dates must fail loudly."""
+    rng = np.random.default_rng(7)
+    dates = pd.date_range("2023-01-01", periods=15, freq="D", tz="UTC")
+    frames = []
+    for sym in ["A", "B", "C"]:
+        closes = 100.0 * np.cumprod(1.0 + rng.normal(0, 0.01, len(dates)))
+        frames.append(pd.DataFrame({
+            "date": dates, "symbol": sym, "open": closes, "high": closes,
+            "low": closes, "close": closes, "volume": 1.0,
+        }))
+    small = (
+        pd.concat(frames).set_index(["date", "symbol"]).sort_index()
+        [["open", "high", "low", "close", "volume"]]
+    )
+    with pytest.raises(SignalContractError, match="too short"):
+        assert_no_lookahead(clean_momentum, small)
