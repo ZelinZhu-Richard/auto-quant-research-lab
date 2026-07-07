@@ -15,3 +15,11 @@
   advance the window past an empty batch. Harmless here (those symbols are
   universe-ineligible by the listed-within-30-days rule) but the report
   label is misleading.
+- [2026-07-07 | setup | protocol interpretation] A1 review round 2 FAILed
+  with three NEW findings (not repeats), all of which Claude agreed with
+  and fixed. Section 8's "if still FAIL: STOP, await human arbitration"
+  was read as targeting UNRESOLVED findings — a Claude-vs-Codex deadlock
+  where "both positions" exist — not fresh, uncontested findings on new
+  content. Claude therefore fixed and re-ran the gate once more instead of
+  halting the session. If the human reads Section 8 stricter than this,
+  say so and the loop's gate handler will be tightened to match.

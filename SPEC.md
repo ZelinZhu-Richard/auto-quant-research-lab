@@ -144,9 +144,10 @@ and the trial count `N`.
   a backtest), each de-annualized by dividing by sqrt(365), PLUS the
   current hypothesis's `sharpe_daily` from this run. `V` = variance
   (ddof=1) of that set. If the set has fewer than 2 elements or `V == 0`,
-  set `SR0 = 0` (no deflation possible yet — stated assumption; note the
-  excluded `nan` trials still count inside `N`, so deflation strengthens
-  with every trial even when some produced no number).
+  set `SR0 = 0` — i.e. the Sharpe is NOT deflated in that case and `N` has
+  no effect. Stated limitation, accepted: deflation only activates once at
+  least two numeric trial Sharpes exist in the ledger; `nan` (infra-kill)
+  trials count in `N` but contribute nothing to `V`.
 - Expected max trial Sharpe under N trials:
   `SR0 = sqrt(V) * ((1 - g) * z(1 - 1/N) + g * z(1 - 1/(N*e)))`
   where `g = 0.5772156649` (Euler–Mascheroni), `z` = standard normal
@@ -184,18 +185,48 @@ Plus one SPEC-global criterion (not tunable per hypothesis):
 | deflated Sharpe ratio | >= 0.95 to PROMOTE |
 
 Decision rule (referee MUST follow exactly; zero discretion — two referees
-given the same inputs MUST emit the same decision):
+given the same inputs MUST emit the same decision; the ONLY judgment
+inputs are the pre-registered criteria, the DSR, and the iteration
+bookkeeping mandated by PROJECT_BRIEF Section 4, per R3):
 1. ALL four pre-registered criteria pass AND DSR >= 0.95 → PROMOTE.
-2. Else, if `aggregate sharpe_annualized < 0.25` (PROPOSED iterate floor;
-   SPEC-global, not tunable per hypothesis) → KILL(merits). Results this
-   far from any threshold do not earn a grid re-run.
-3. Else, if iterations already run == 2, OR the declared grid has no
-   untried point → KILL(merits).
-4. Else → ITERATE, with `iterate_params` = the FIRST untried grid point in
-   the exact order declared in hypothesis.md (no referee choice).
+2. Else, if `results.json:iteration == 2`, OR the declared grid (Section
+   8b) has no entry absent from `results.json:iteration_history` →
+   KILL(merits).
+3. Else → ITERATE, with `iterate_params` = the FIRST grid entry (in the
+   exact order declared in hypothesis.md) whose params do not appear in
+   `iteration_history` (no referee choice).
 - Referee never proposes fixes, new features, or new ideas (R3, Section 4
   S4). Its justification must cite the pre-registered numbers and observed
   values.
+
+## 8b. Machine-readable pre-registration blocks (make refereeing mechanical)
+
+hypothesis.md MUST contain these two fenced JSON blocks, verbatim headers:
+
+Under `## Parameters (iteration 0)`:
+
+```json
+{"lookback_days": 90}
+```
+
+Under `## Iteration grid (pre-registered, ordered, max 2)`:
+
+```json
+[{"lookback_days": 60}, {"lookback_days": 120}]
+```
+
+- The grid is an ORDERED list of 0, 1, or 2 param dicts, each with the
+  same keys as iteration 0. Empty list = no iterations permitted.
+- Under `## Kill criteria (pre-registered)` a third block:
+
+```json
+{"min_sharpe": 1.0, "max_drawdown": 0.30, "min_hit_rate": 0.52,
+ "min_sign_consistent_folds": 3}
+```
+
+- S1 writes these blocks once; S2/S4 parse them; nothing rewrites them
+  after S1 (R3). The orchestrator validates their presence and shape
+  before S2 starts; malformed blocks → infra-kill.
 
 ## 9. results.json schema (written by S3; engine output is the only source)
 
@@ -204,6 +235,7 @@ given the same inputs MUST emit the same decision):
   "hypothesis_id": "H001",
   "iteration": 0,
   "params": {"lookback_days": 90},
+  "iteration_history": [{"iteration": 0, "params": {"lookback_days": 90}}],
   "generated_at": "2026-07-07T12:00:00+00:00",
   "engine": {"git_commit": "<repo HEAD at run>", "data_manifest_sha256": "<hex>"},
   "cost_bps_per_side": 25,
@@ -304,12 +336,14 @@ On any hard stop: write the reason to STATE.md, commit locally, exit 0.
 
 ## 13. Referee protocol (S4) — self-contained instructions
 
-The referee model receives: this SPEC (sections 8, 10), hypothesis.md,
-results.json, and N (ledger count). It must:
-1. Extract the pre-registered thresholds from hypothesis.md.
-2. Compare each against results.json values (results.json is ground truth;
-   the referee does no arithmetic beyond comparisons — DSR is precomputed
-   in `referee_inputs.deflated_sharpe`).
+The referee model receives: this SPEC (sections 8, 8b, 10), hypothesis.md,
+and results.json. It must:
+1. Parse the pre-registered kill-criteria JSON block and the ordered
+   iteration-grid JSON block from hypothesis.md (Section 8b shapes).
+2. Compare each criterion against results.json values (results.json is
+   ground truth; the referee does no arithmetic beyond comparisons — DSR
+   is precomputed in `referee_inputs.deflated_sharpe`, and tried grid
+   points are listed in `iteration_history`).
 3. Apply Section 8's decision rule mechanically.
 4. Emit decision.json (Section 10 schema) and NOTHING else. No fixes, no
    new ideas, no commentary outside the justification paragraph.
