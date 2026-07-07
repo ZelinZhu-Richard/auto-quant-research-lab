@@ -15,9 +15,20 @@ def test_unsorted_panel_refused():
         run_walkforward(panel, toy_signal, start=D1, end=D2)
 
 
-def test_calendar_gap_refused():
+def test_interior_calendar_gap_refused():
     panel = _panel()
     dates = panel.index.get_level_values("date")
     gapped = panel[dates != D1]  # drop the middle day entirely
-    with pytest.raises(EngineError, match="calendar gap"):
+    # D1 missing: as a return day (window shrinks) and as D2's signal date
+    with pytest.raises(EngineError, match="calendar"):
+        run_walkforward(gapped, toy_signal, start=D1, end=D2)
+    with pytest.raises(EngineError, match="calendar"):
         run_walkforward(gapped, toy_signal, start=D2, end=D2)
+
+
+def test_terminal_calendar_gap_refused():
+    panel = _panel()
+    dates = panel.index.get_level_values("date")
+    truncated = panel[dates != D2]  # requested end date absent from panel
+    with pytest.raises(EngineError, match="calendar"):
+        run_walkforward(truncated, toy_signal, start=D1, end=D2)

@@ -47,21 +47,29 @@ def run_walkforward(
     date_values = dates.values  # date-major sorted; used for positional cuts
     panel_date_col = panel.index.get_level_values("date").values
 
+    # SPEC §3/§5 define return days as a complete daily calendar over
+    # [start, end]. Interior OR terminal gaps must fail loudly (infra-kill),
+    # never silently shorten the window or compress multi-day moves.
     return_days = dates[(dates >= start) & (dates <= end)]
-    if len(return_days) == 0:
-        raise EngineError(f"no return days in [{start}, {end}]")
+    expected_days = (end - start).days + 1
+    if (
+        len(return_days) != expected_days
+        or len(return_days) == 0
+        or return_days[0] != start
+        or return_days[-1] != end
+    ):
+        raise EngineError(
+            f"return-day calendar incomplete: expected {expected_days} days "
+            f"covering [{start.date()}, {end.date()}], found {len(return_days)}"
+        )
     first_pos = int(np.searchsorted(date_values, return_days[0].to_numpy()))
     if first_pos == 0:
         raise EngineError("no signal date exists before the first return day")
-
-    # SPEC §3/§5 define the lag in calendar days. A gap in the UNION
-    # calendar would silently compress a multi-day move into one return day
-    # and distort annualized metrics — fail loudly instead (=> infra-kill).
-    eval_dates = dates[(dates >= dates[first_pos - 1]) & (dates <= end)]
-    gaps = pd.Series(eval_dates).diff().dropna()
-    if (gaps != pd.Timedelta(days=1)).any():
-        raise EngineError("calendar gap inside evaluation window; engine "
-                          "requires a complete daily union calendar")
+    if dates[first_pos - 1] != start - pd.Timedelta(days=1):
+        raise EngineError(
+            "first signal date is not the calendar day before the window "
+            f"start ({dates[first_pos - 1].date()} vs {start.date()})"
+        )
 
     closes = panel["close"].unstack("symbol")
     symbols = closes.columns
