@@ -42,12 +42,22 @@ def compute_signal(panel: pd.DataFrame) -> pd.Series
 
 ## 3. Portfolio construction (fixed in the engine; agents cannot change it)
 
-For each date `t` in the evaluation window:
+Terminology used throughout this SPEC: a **signal date** `t` is a date on
+which weights are formed from close(t) and all prior data; a **return day**
+`t+1` is the day those weights earn the close(t) → close(t+1) return. All
+evaluation windows in Section 5 are stated in RETURN DAYS. For a window of
+return days `[d_start, d_end]`, signal dates run `[d_start - 1 day,
+d_end - 1 day]`; the engine never needs a close after `d_end`, so the last
+train_val bar (2025-06-30) is the last return day and NO data beyond
+train_val is ever referenced.
+
+For each signal date `t`:
 
 1. Valid set = symbols with non-NaN signal at `t` AND a close at `t`.
    Let `n` = |valid set|, `q = floor(n / 5)`.
-2. If `q < 3`: no positions at `t` (degenerate cross-section; the date is
-   recorded with weight 0 everywhere and excluded from hit-rate).
+2. If `q < 3`: no positions formed at `t` (degenerate cross-section; the
+   corresponding return day gets portfolio return from zero weights, i.e.
+   0 minus any turnover cost, and is excluded from hit-rate).
 3. Deterministic ordering: sort valid symbols by
    `(signal value DESC, symbol name ASC)`. Top `q` are LONG, bottom `q`
    SHORT. Ties broken by the symbol-name sort — no randomness.
@@ -56,11 +66,12 @@ For each date `t` in the evaluation window:
 5. EXECUTION LAG (the engine's core no-lookahead guarantee, not
    configurable): weights `w(t)` are computed from data up to and including
    close(t) and earn the close(t) → close(t+1) simple return, credited to
-   day t+1:
+   return day t+1:
    `r_gross(t+1) = Σ_i w_i(t) * (close_i(t+1) / close_i(t) - 1)`.
-   If a symbol has no close at t+1 (delisting/gap), its return that day
-   is 0 (position assumed flat-exited at last close; conservative and
-   deterministic).
+   If a symbol has no close at t+1 (mid-sample delisting/gap), its return
+   that day is 0 (position assumed flat-exited at last close; conservative
+   and deterministic). By the window convention above this rule never
+   fires at the end of train_val — the boundary case cannot arise.
 
 ## 4. Costs (fixed in the engine)
 
@@ -75,12 +86,15 @@ For each date `t` in the evaluation window:
 
 - Burn-in (history available to signals, never scored):
   2022-07-01 → 2022-10-31.
-- Four sequential evaluation folds over train_val (dates inclusive):
+- Four sequential evaluation folds over train_val, stated in RETURN DAYS,
+  dates inclusive (per Section 3, each fold's signal dates start one day
+  earlier — F1's first signal date is 2022-10-31, inside burn-in):
   - F1: 2022-11-01 → 2023-06-30
   - F2: 2023-07-01 → 2024-02-29
   - F3: 2024-03-01 → 2024-10-31
   - F4: 2024-11-01 → 2025-06-30
-- Aggregate window: 2022-11-01 → 2025-06-30.
+- Aggregate window (return days): 2022-11-01 → 2025-06-30. Its last signal
+  date is 2025-06-29; no close beyond train_val is ever needed.
 - The information set expands continuously: at each date `t` the signal
   sees all data from 2022-07-01 through `t`. NOTE (stated assumption):
   signals here have no fitted parameters — all parameters are
@@ -119,15 +133,20 @@ Inputs: daily net returns of the aggregate window (length `T`, per-period
 sharpe `sr = mean(r)/std(r, ddof=1)`, skewness `g3`, raw kurtosis `g4`),
 and the trial count `N`.
 
-- `N` = number of LEDGER.md entries INCLUDING the current hypothesis
-  (i.e. ledger line count + 1 at S3 time). Iterations of the same
-  hypothesis do not increment N (they share one ledger line), but every
-  distinct hypothesis does, killed or not.
-- Trial-Sharpe variance `V`: the variance (ddof=1) of the per-period
-  aggregate Sharpe ratios of all N trials as recorded in LEDGER.md
-  (`sharpe=` field de-annualized by dividing by sqrt(365)) including the
-  current one. If `N < 2` or `V == 0`, set `SR0 = 0` (no deflation
-  possible yet — stated assumption).
+- `N` = (LEDGER.md line count at S3 time) + 1. The "+1" IS the current
+  hypothesis: its ledger line is only appended at end-of-cycle, so it is
+  never yet in the file when S3 runs — the engine adds it explicitly.
+  Iterations of the same hypothesis do not increment N (they share one
+  ledger line and one trial slot; a re-run at a new grid point overwrites
+  the current trial's sharpe, it does not add a trial).
+- Trial-Sharpe set for variance: the `sharpe=` values parsed from every
+  LEDGER.md line, EXCLUDING `nan` entries (infra-kills that never produced
+  a backtest), each de-annualized by dividing by sqrt(365), PLUS the
+  current hypothesis's `sharpe_daily` from this run. `V` = variance
+  (ddof=1) of that set. If the set has fewer than 2 elements or `V == 0`,
+  set `SR0 = 0` (no deflation possible yet — stated assumption; note the
+  excluded `nan` trials still count inside `N`, so deflation strengthens
+  with every trial even when some produced no number).
 - Expected max trial Sharpe under N trials:
   `SR0 = sqrt(V) * ((1 - g) * z(1 - 1/N) + g * z(1 - 1/(N*e)))`
   where `g = 0.5772156649` (Euler–Mascheroni), `z` = standard normal
@@ -150,7 +169,13 @@ and never after S1.
 | min annualized Sharpe (after costs) | >= 1.0 | aggregate window |
 | max drawdown | <= 0.30 | aggregate window |
 | min hit rate | >= 0.52 | aggregate window |
-| stability | Sharpe sign == aggregate sign in >= 3 of 4 folds | folds |
+| stability | `(fold_sharpe > 0) == (aggregate_sharpe > 0)` for >= 3 of 4 folds | folds |
+
+Sign convention (deterministic, incl. exact zero): a Sharpe is "positive"
+iff strictly `> 0`; zero counts as non-positive. A fold is sign-consistent
+iff `(fold_sharpe > 0) == (aggregate_sharpe > 0)`. A flat (all-zero) result
+is thus sign-consistent everywhere but fails the min-Sharpe criterion —
+fail-safe toward killing.
 
 Plus one SPEC-global criterion (not tunable per hypothesis):
 
@@ -158,15 +183,16 @@ Plus one SPEC-global criterion (not tunable per hypothesis):
 |---|---|
 | deflated Sharpe ratio | >= 0.95 to PROMOTE |
 
-Decision rule (referee MUST follow exactly):
-- ALL four pre-registered criteria pass AND DSR >= 0.95 → PROMOTE.
-- Any criterion fails AND (iteration grid exhausted OR iterations == 2 OR
-  no untried grid point is declared) → KILL(merits).
-- Any criterion fails AND an untried pre-registered grid point exists AND
-  iterations < 2 → ITERATE is PERMITTED but not required; the referee may
-  still KILL(merits) if results are far from thresholds (e.g. aggregate
-  Sharpe < 0.0). ITERATE must name the exact grid point to try next, chosen
-  from the declared grid only.
+Decision rule (referee MUST follow exactly; zero discretion — two referees
+given the same inputs MUST emit the same decision):
+1. ALL four pre-registered criteria pass AND DSR >= 0.95 → PROMOTE.
+2. Else, if `aggregate sharpe_annualized < 0.25` (PROPOSED iterate floor;
+   SPEC-global, not tunable per hypothesis) → KILL(merits). Results this
+   far from any threshold do not earn a grid re-run.
+3. Else, if iterations already run == 2, OR the declared grid has no
+   untried point → KILL(merits).
+4. Else → ITERATE, with `iterate_params` = the FIRST untried grid point in
+   the exact order declared in hypothesis.md (no referee choice).
 - Referee never proposes fixes, new features, or new ideas (R3, Section 4
   S4). Its justification must cite the pre-registered numbers and observed
   values.
@@ -208,7 +234,17 @@ All floats full precision (no rounding in the file). `folds` always has
 exactly 4 entries. `status` is `"ok"` or `"error: <one line>"` (an error
 status at S3 → infra-kill per R4).
 
-## 10. decision.json schema (written by S4 referee; nothing else writes it)
+## 10. decision.json schema
+
+Exactly one writer per cycle, chosen by path:
+- MERIT path (S3 produced `status: "ok"`): the S4 REFEREE writes it, with
+  `kill_reason` ∈ {"merits", null}. The referee never writes
+  "infrastructure".
+- INFRASTRUCTURE path (any stage failed; the referee is never invoked):
+  the ORCHESTRATOR writes it mechanically, with `decision: "KILL"`,
+  `kill_reason: "infrastructure"`, `criteria: []`, `iterate_params: null`,
+  `referee_model: "orchestrator"`, and the failure line as justification
+  (R4).
 
 ```json
 {
@@ -231,8 +267,8 @@ status at S3 → infra-kill per R4).
 ```
 
 - `decision` ∈ {"KILL", "ITERATE", "PROMOTE"} (exactly one).
-- `kill_reason` ∈ {"merits", "infrastructure", null}. Infra-kills may be
-  written by the ORCHESTRATOR (not the referee) when a stage fails (R4).
+- `kill_reason` ∈ {"merits", "infrastructure", null} — "infrastructure"
+  only ever via the orchestrator path above.
 - `iterate_params`: the exact pre-registered grid point to run next, or
   null. Must equal one of the grid points declared in hypothesis.md.
 
