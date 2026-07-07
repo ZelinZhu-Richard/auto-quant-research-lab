@@ -9,8 +9,8 @@ against the REAL train_val panel. Without the env var the module skips
 attempt => infra-kill (R4).
 """
 
-import importlib.util
 import os
+import types
 from pathlib import Path
 
 import pytest
@@ -36,10 +36,14 @@ pytestmark = pytest.mark.skipif(
 def compute_signal():
     signal_path = REPO_ROOT / "hypotheses" / HYPOTHESIS_ID / "signal.py"
     assert signal_path.exists(), f"{signal_path} not found"
-    spec = importlib.util.spec_from_file_location("hypothesis_signal", signal_path)
-    module = importlib.util.module_from_spec(spec)
-    with forbid_io():  # block import-time data caching (lookahead vector)
-        spec.loader.exec_module(module)
+    # same import discipline as the engine: compile outside the guard,
+    # exec inside it (blocks import-time data caching, a lookahead vector)
+    code = compile(signal_path.read_text(encoding="utf-8"),
+                   str(signal_path), "exec")
+    module = types.ModuleType("hypothesis_signal")
+    module.__file__ = str(signal_path)
+    with forbid_io():
+        exec(code, module.__dict__)  # noqa: S102 — sandboxed by forbid_io
     assert hasattr(module, "compute_signal"), "signal.py lacks compute_signal"
     return module.compute_signal
 

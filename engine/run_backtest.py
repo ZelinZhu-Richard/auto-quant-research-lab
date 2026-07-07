@@ -8,11 +8,11 @@ status="error: <one line>" and exits non-zero (orchestrator: infra-kill).
 """
 
 import argparse
-import importlib.util
 import json
 import subprocess
 import sys
 import traceback
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -46,14 +46,18 @@ def _git_commit(repo_root: Path) -> str:
 
 
 def _load_signal_module(signal_path: Path):
-    spec = importlib.util.spec_from_file_location("hypothesis_signal", signal_path)
-    if spec is None or spec.loader is None:
-        raise EngineError(f"cannot import {signal_path}")
-    module = importlib.util.module_from_spec(spec)
-    # forbid_io: a signal could otherwise cache future data at IMPORT time
-    # and read it back during compute (import-time lookahead)
+    # Read + compile BEFORE the guard (the file itself must be readable),
+    # then exec under forbid_io: a signal could otherwise cache future data
+    # at IMPORT time and read it back during compute (import-time lookahead).
+    try:
+        code = compile(signal_path.read_text(encoding="utf-8"),
+                       str(signal_path), "exec")
+    except SyntaxError as exc:
+        raise EngineError(f"signal.py syntax error: {exc}") from exc
+    module = types.ModuleType("hypothesis_signal")
+    module.__file__ = str(signal_path)
     with forbid_io():
-        spec.loader.exec_module(module)
+        exec(code, module.__dict__)  # noqa: S102 — sandboxed by forbid_io
     if not hasattr(module, "compute_signal"):
         raise EngineError(f"{signal_path} does not define compute_signal")
     return module

@@ -160,6 +160,34 @@ def test_file_io_during_compute_is_caught(synthetic_panel, tmp_path):
             run_full_harness(leaky, synthetic_panel)
 
 
+def test_kernel_level_fd_guard_catches_exotic_io(synthetic_panel, tmp_path):
+    """Bypasses of the Python patches (io.open_code, pyarrow.fs, raw
+    listdir) must still die at the kernel layer (RLIMIT_NOFILE=0) or the
+    patch layer — either way the harness fails the signal."""
+    side_file = tmp_path / "sneaky3.parquet"
+    synthetic_panel.to_parquet(side_file)
+
+    def io_open_code(panel: pd.DataFrame) -> pd.Series:
+        import io as _io
+        _io.open_code(str(side_file)).read(10)
+        return clean_momentum(panel)
+
+    def io_pyarrow_fs(panel: pd.DataFrame) -> pd.Series:
+        import pyarrow.fs as pafs
+        fs = pafs.LocalFileSystem()
+        fs.open_input_file(str(side_file)).read(10)
+        return clean_momentum(panel)
+
+    def io_listdir(panel: pd.DataFrame) -> pd.Series:
+        import os as _os
+        _os.listdir(str(tmp_path))
+        return clean_momentum(panel)
+
+    for leaky in (io_open_code, io_pyarrow_fs, io_listdir):
+        with pytest.raises((PurityViolation, OSError)):
+            run_full_harness(leaky, synthetic_panel)
+
+
 def test_engine_backtest_also_enforces_purity(synthetic_panel, tmp_path):
     """Defense in depth: S3's walk-forward itself blocks I/O, so a signal
     that somehow skipped the harness still cannot self-load data."""

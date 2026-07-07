@@ -37,6 +37,20 @@ def compute_signal(panel: pd.DataFrame) -> pd.Series
 - Purity: no I/O of any kind (no file, network, environment access), no
   randomness unless seeded with a fixed literal, no state between calls,
   no mutation of `panel`.
+- Purity enforcement boundary (normative): purity is enforced by four
+  layers — (i) Python-level guards on the common read entry points
+  (open/io/os/pathlib/pandas/pyarrow/numpy/socket), raising
+  PurityViolation; (ii) kernel-level RLIMIT_NOFILE=0 inside every guarded
+  region, so ANY new file-descriptor allocation fails regardless of API
+  (covers io.open_code, pyarrow C++ filesystems, ctypes, os.listdir);
+  (iii) the harness truncate-and-compare check; (iv) container read-only
+  mounts + egress allowlist + physical absence of holdout (R2). Both the
+  S2 harness and the S3 engine loop run signal code (including its module
+  import) inside layers (i)+(ii). ACCEPTED RESIDUAL: fd-less metadata
+  syscalls (os.stat — cannot read prices) and a signal deliberately
+  raising its own rlimit; the threat model is careless generated code,
+  and layer (iv) is the adversarial backstop. A reviewer verifying purity
+  verifies THIS boundary, not the unattainable absolute.
 - Maximum lookback: 120 calendar days (declared in hypothesis.md; the
   first scored date has 123 days of history available).
 

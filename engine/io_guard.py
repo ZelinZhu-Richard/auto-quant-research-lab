@@ -5,10 +5,20 @@ bypasses truncation entirely and can read close(t+1) — the one leak the
 truncate-and-compare check cannot see. Both the S2 harness AND the S3
 engine therefore run compute_signal under this guard.
 
-Coverage: builtins.open, io.open, os.open/fdopen, pathlib.Path
-open/read_text/read_bytes, pandas readers, pyarrow parquet/dataset/csv
-readers, numpy file loaders, socket creation. A signal could still bypass
-this with ctypes or other exotica; the structural backstops are the
+Two enforcement layers (see SPEC §2 "Purity enforcement boundary"):
+1. Python-level patches of the common read entry points (clear error
+   messages for the common mistake).
+2. Kernel-level RLIMIT_NOFILE soft limit dropped to 0 for the guarded
+   region (POSIX): ANY attempt to allocate a new file descriptor — via
+   io.open_code, pyarrow's C++ filesystems, ctypes, sockets, os.listdir's
+   opendir, or any other API — fails at the OS level with EMFILE.
+   Already-open descriptors keep working, so in-memory pandas/numpy code
+   and pytest capture are unaffected.
+
+Accepted residual (documented in SPEC §2): fd-less metadata syscalls such
+as os.stat (which cannot read prices), and a signal maliciously raising its
+own rlimit back. The threat model is careless generated code, not an
+adversary with kernel knowledge; the structural backstops are the
 read-only Docker mounts, the egress allowlist, and R2's physical absence
 of holdout data.
 """
@@ -27,6 +37,46 @@ import pandas as pd
 from engine.errors import EngineError
 
 
+def _prewarm_allowed_libraries() -> None:
+    """With RLIMIT_NOFILE=0 active, any LAZY import inside a pandas/numpy
+    call (e.g. pandas.core.reshape on the first .unstack) would die on the
+    module-file open. Signals may import only pandas/numpy/math (SPEC §2 /
+    S2 contract), so import every submodule of both up front — after this,
+    nothing the signal can legitimately touch needs a new file descriptor."""
+    import importlib
+    import pkgutil
+    import warnings
+
+    skip_markers = (".tests", "conftest", "__main__", ".f2py", ".distutils",
+                    "._pyinstaller", ".setup")
+    sink = io.StringIO()
+    for package in (np, pd):
+        prefix = package.__name__ + "."
+        for info in pkgutil.walk_packages(package.__path__, prefix):
+            name = info.name
+            if any(marker in name for marker in skip_markers):
+                continue
+            # BaseException: some modules sys.exit() or print on import;
+            # nothing they do matters here beyond landing in sys.modules
+            with warnings.catch_warnings(), \
+                    contextlib.redirect_stdout(sink), \
+                    contextlib.redirect_stderr(sink), \
+                    contextlib.suppress(BaseException):
+                warnings.simplefilter("ignore")
+                importlib.import_module(name)
+
+
+_prewarm_allowed_libraries()
+
+try:
+    import resource  # POSIX; absent on Windows
+
+    _HAS_RLIMIT = hasattr(resource, "RLIMIT_NOFILE")
+except ImportError:  # pragma: no cover — non-POSIX fallback
+    resource = None
+    _HAS_RLIMIT = False
+
+
 class PurityViolation(EngineError):
     """The signal attempted I/O during compute_signal."""
 
@@ -41,8 +91,11 @@ def _targets() -> list[tuple[object, str]]:
     targets: list[tuple[object, str]] = [
         (builtins, "open"),
         (io, "open"),
+        (io, "open_code"),
         (os, "open"),
         (os, "fdopen"),
+        (os, "listdir"),
+        (os, "scandir"),
         (pathlib.Path, "open"),
         (pathlib.Path, "read_text"),
         (pathlib.Path, "read_bytes"),
@@ -77,13 +130,36 @@ def _targets() -> list[tuple[object, str]]:
         for name in ("memory_map", "input_stream", "OSFile"):
             if hasattr(pa, name):
                 targets.append((pa, name))
+    with contextlib.suppress(ImportError):
+        import pyarrow.fs as pafs
+        for name in ("LocalFileSystem", "FileSystem", "SubTreeFileSystem"):
+            if hasattr(pafs, name):
+                targets.append((pafs, name))
     return targets
 
 
 @contextlib.contextmanager
+def _no_new_fds():
+    """Kernel-level layer: no new file descriptors while active (POSIX).
+    Catches every bypass of the Python-level patches — io.open_code,
+    pyarrow C++ filesystems, ctypes, sockets — with EMFILE."""
+    if not _HAS_RLIMIT:  # pragma: no cover — non-POSIX
+        yield
+        return
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (0, hard))
+    try:
+        yield
+    finally:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
+
+
+@contextlib.contextmanager
 def forbid_io():
-    """Every listed entry point raises PurityViolation while active."""
+    """Every listed entry point raises PurityViolation while active, and
+    the kernel refuses new file descriptors for everything else."""
     with contextlib.ExitStack() as stack:
         for obj, name in _targets():
             stack.enter_context(mock.patch.object(obj, name, _blocked))
+        stack.enter_context(_no_new_fds())
         yield
