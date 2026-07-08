@@ -227,6 +227,18 @@ def test_environb_allowlist_serves_bytes_and_blocks_rest(synthetic_panel):
         run_full_harness(env_blocked_bytes, synthetic_panel)
 
 
+def test_non_utf8_environb_key_does_not_break_guard(synthetic_panel):
+    """A non-UTF-8 bytes key in the ambient environment must not crash
+    guard entry — it is simply never allowlisted."""
+    import os as _os
+
+    _os.environb[b"\xff\xfeWEIRD"] = b"1"
+    try:
+        run_full_harness(clean_momentum, synthetic_panel)
+    finally:
+        del _os.environb[b"\xff\xfeWEIRD"]
+
+
 def test_engine_backtest_also_enforces_purity(synthetic_panel, tmp_path):
     """Defense in depth: S3's walk-forward itself blocks I/O, so a signal
     that somehow skipped the harness still cannot self-load data."""

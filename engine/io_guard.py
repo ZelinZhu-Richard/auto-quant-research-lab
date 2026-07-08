@@ -102,8 +102,8 @@ class _BlockedEnviron:
     def __init__(self, snapshot: dict):
         self._snapshot = {}
         for key, value in snapshot.items():
-            normalized = key.decode() if isinstance(key, bytes) else key
-            if normalized in _ENV_ALLOWLIST:
+            normalized = self._norm(key)  # None for non-UTF-8 bytes keys,
+            if normalized in _ENV_ALLOWLIST:  # which can never be allowlisted
                 self._snapshot[normalized] = value
 
     @staticmethod
