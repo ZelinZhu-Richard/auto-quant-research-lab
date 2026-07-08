@@ -201,8 +201,10 @@ def validate_decision(text: str, declared_grid: list[dict],
         raise StageFailure(f"decision.json unparseable: {exc}") from exc
     if decision.get("decision") not in {"KILL", "ITERATE", "PROMOTE"}:
         raise StageFailure(f"invalid decision {decision.get('decision')!r}")
-    if decision.get("kill_reason") not in {"merits", "infrastructure", None}:
-        raise StageFailure(f"invalid kill_reason {decision.get('kill_reason')!r}")
+    # SPEC §10: the referee NEVER writes "infrastructure" — that value is
+    # reserved for the orchestrator path when a stage fails.
+    if decision.get("kill_reason") not in {"merits", None}:
+        raise StageFailure(f"invalid referee kill_reason {decision.get('kill_reason')!r}")
     if not isinstance(decision.get("criteria"), list):
         raise StageFailure("decision.criteria must be a list")
     if not str(decision.get("justification", "")).strip():

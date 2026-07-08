@@ -76,7 +76,9 @@ Write signal.py implementing the hypothesis below against this exact contract
 - The file MUST contain exactly one module-level line starting with
   `PARAMS = ` holding a JSON-compatible dict literal (the orchestrator
   rewrites this line during pre-registered iterations). compute_signal must
-  read its parameters from PARAMS.
+  read its parameters from PARAMS, and PARAMS must equal the hypothesis
+  card's "Parameters (iteration 0)" JSON block EXACTLY — any divergence
+  fails the stage.
 - Allowed imports: pandas, numpy, math only.
 
 Output ONLY the complete Python source of signal.py. No preamble, no fences.

@@ -147,13 +147,17 @@ class Loop:
             claude_help = run_logged(self.log, ["claude", "--help"],
                                      cwd=self.repo_root, timeout_s=120,
                                      stage="preflight")
-            for flag in ("-p, --print", "--output-format", "--max-budget-usd"):
+            # every flag LiveLlm.claude_text actually passes
+            for flag in ("-p, --print", "--output-format", "--max-budget-usd",
+                         "--no-session-persistence", "--tools"):
                 if flag not in claude_help.stdout:
                     raise SystemExit(f"preflight: claude --help lacks {flag!r}")
             codex_help = run_logged(self.log, ["codex", "exec", "--help"],
                                     cwd=self.repo_root, timeout_s=120,
                                     stage="preflight")
-            for flag in ("--output-last-message", "--skip-git-repo-check", "-s, --sandbox"):
+            # every flag LiveLlm.codex_text actually passes
+            for flag in ("--output-last-message", "--skip-git-repo-check",
+                         "-s, --sandbox", "-C, --cd"):
                 if flag not in codex_help.stdout:
                     raise SystemExit(f"preflight: codex exec --help lacks {flag!r}")
 
@@ -176,23 +180,9 @@ class Loop:
         hyp_dir = self.repo_root / "hypotheses" / hid
         hyp_dir.mkdir(parents=True, exist_ok=True)
         (hyp_dir / "hypothesis.md").write_text(text, encoding="utf-8")
-        try:
-            blocks = validate_hypothesis_md(text)
-        except StageFailure as first_error:
-            if canned:
-                raise
-            # one re-prompt with the validation error (mirrors R4's single
-            # repair attempt)
-            text = self.llm.claude_text(
-                prompts.s1_hypothesize(
-                    (self.repo_root / "SPEC.md").read_text(),
-                    (self.repo_root / "STATE.md").read_text(),
-                    state.ledger_tail(self.repo_root), template, hid,
-                ) + f"\n\nYour previous card was INVALID: {first_error}. Fix it.",
-                "S1-repair", self.timeouts.s1,
-            )
-            (hyp_dir / "hypothesis.md").write_text(text, encoding="utf-8")
-            blocks = validate_hypothesis_md(text)
+        # R4: the single repair attempt exists for red S2 tests ONLY.
+        # An invalid card is a mid-cycle failure => infra-kill, no retry.
+        blocks = validate_hypothesis_md(text)
         self._commit(f"{hid}/S1: hypothesize")
         return text, blocks
 
@@ -207,7 +197,13 @@ class Loop:
             spec2 = (self.repo_root / "SPEC.md").read_text()
             source = self.llm.codex_text(
                 prompts.s2_implement(spec2, hypothesis_md), "S2", self.timeouts.s2)
-        validate_signal_source(source)
+        signal_params = validate_signal_source(source)
+        if signal_params != blocks["params"]:
+            # R3: results must run exactly the pre-registered iteration-0
+            # params; a divergent PARAMS line is a mid-cycle failure.
+            raise StageFailure(
+                f"S2 PARAMS {signal_params} != pre-registered iteration-0 "
+                f"params {blocks['params']}")
         (hyp_dir / "signal.py").write_text(source, encoding="utf-8")
         (hyp_dir / "iterations.json").write_text(
             json.dumps([{"iteration": 0, "params": blocks["params"]}]) + "\n")
@@ -263,17 +259,9 @@ class Loop:
                 prompts.s4_referee((self.repo_root / "SPEC.md").read_text(),
                                    hypothesis_md, results_text),
                 "S4", self.timeouts.s4)
-            try:
-                decision = validate_decision(text, blocks["grid"],
-                                             results["iteration_history"])
-            except StageFailure as first_error:
-                text = self.llm.codex_text(
-                    prompts.s4_referee((self.repo_root / "SPEC.md").read_text(),
-                                       hypothesis_md, results_text)
-                    + f"\n\nYour previous decision.json was INVALID: {first_error}. Fix it.",
-                    "S4-repair", self.timeouts.s4)
-                decision = validate_decision(text, blocks["grid"],
-                                             results["iteration_history"])
+            # R4: invalid referee output is a mid-cycle failure => infra-kill
+            decision = validate_decision(text, blocks["grid"],
+                                         results["iteration_history"])
         (self.repo_root / "hypotheses" / hid / "decision.json").write_text(
             json.dumps(decision, indent=2) + "\n", encoding="utf-8")
         self._commit(f"{hid}/S4: referee ({decision['decision']})")
@@ -287,17 +275,15 @@ class Loop:
             self._mock_log("S5", "canned memo")
             memo = dryrun.canned_memo(hypothesis_md, results, decision)
         else:
-            try:
-                memo = self.llm.claude_text(
-                    prompts.s5_memo(
-                        (self.repo_root / "templates" / "memo.md").read_text(),
-                        hypothesis_md, json.dumps(results, indent=2),
-                        json.dumps(decision, indent=2)),
-                    "S5", self.timeouts.s5)
-            except StageFailure:
-                # memos exist for ALL outcomes — degrade, never skip
-                memo = dryrun.canned_memo(hypothesis_md, results, decision)
-                memo += "\n(NOTE: S5 LLM call failed; orchestrator fallback memo.)\n"
+            # R4: an S5 failure is a mid-cycle failure => infra-kill (the
+            # infra-kill path writes its own memo, so every outcome still
+            # gets one)
+            memo = self.llm.claude_text(
+                prompts.s5_memo(
+                    (self.repo_root / "templates" / "memo.md").read_text(),
+                    hypothesis_md, json.dumps(results, indent=2),
+                    json.dumps(decision, indent=2)),
+                "S5", self.timeouts.s5)
         (hyp_dir / "memo.md").write_text(memo, encoding="utf-8")
         self._commit(f"{hid}/S5: memo")
 
@@ -362,14 +348,14 @@ class Loop:
         try:
             hypothesis_md, blocks = self._s1_hypothesize(hid, canned)
             name = self._hypothesis_name(hypothesis_md, hid)
-            self._check_hard_stops_soft()
+            self._check_hard_stops()
             tests_pass = self._s2_implement(hid, hypothesis_md, blocks, canned)
-            self._check_hard_stops_soft()
+            self._check_hard_stops()
 
             iterations_run = 0
             while True:
                 results = self._s3_backtest(hid)
-                self._check_hard_stops_soft()
+                self._check_hard_stops()
                 decision = self._s4_referee(hid, hypothesis_md, blocks, results,
                                             canned is not None)
                 if decision["decision"] != "ITERATE":
@@ -403,14 +389,10 @@ class Loop:
         except StageFailure as exc:
             self._infra_kill(number, hid, name, str(exc), tests_pass)
         self.cycles_done += 1
-
-    def _check_hard_stops_soft(self) -> None:
-        """Between-stage check (SPEC §12): a trip mid-cycle infra-kills the
-        current hypothesis so the ledger stays consistent, then halts."""
-        try:
-            self._check_hard_stops()
-        except HardStop as stop:
-            raise StageFailure(f"hard stop mid-cycle: {stop}") from stop
+        # SPEC §12: a hard stop tripped between stages propagates as
+        # HardStop out of run_cycle — STATE.md records the reason, the run
+        # commits and exits 0. The in-flight hypothesis gets NO ledger line
+        # (it was not judged); its id is reused by the next run.
 
     def run(self) -> int:
         self.preflight()
