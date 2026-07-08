@@ -1,0 +1,55 @@
+{
+  "hypothesis_id": "H001",
+  "iteration": 0,
+  "params": {
+    "lookback_days": 90
+  },
+  "iteration_history": [
+    {
+      "iteration": 0,
+      "params": {
+        "lookback_days": 90
+      }
+    }
+  ],
+  "generated_at": "2026-07-07T12:00:00+00:00",
+  "engine": {
+    "git_commit": "<repo HEAD at run>",
+    "data_manifest_sha256": "<hex>"
+  },
+  "cost_bps_per_side": 25,
+  "aggregate": {
+    "start": "2022-11-01",
+    "end": "2025-06-30",
+    "n_days": 973,
+    "n_position_days": 970,
+    "sharpe_annualized": 0.0,
+    "sharpe_daily": 0.0,
+    "max_drawdown": 0.0,
+    "hit_rate": 0.0,
+    "turnover_annualized": 0.0,
+    "mean_daily_return": 0.0,
+    "std_daily_return": 0.0,
+    "skew": 0.0,
+    "kurtosis_raw": 3.0
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "start": "2022-11-01",
+      "end": "2023-06-30",
+      "n_days": 0,
+      "sharpe_annualized": 0.0,
+      "max_drawdown": 0.0,
+      "hit_rate": 0.0
+    }
+  ],
+  "referee_inputs": {
+    "n_trials": 1,
+    "trial_sharpes_daily": [
+      0.0
+    ],
+    "deflated_sharpe": 0.0
+  },
+  "status": "ok"
+}

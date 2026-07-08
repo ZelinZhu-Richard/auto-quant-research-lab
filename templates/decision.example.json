@@ -1,0 +1,42 @@
+{
+  "hypothesis_id": "H001",
+  "iteration": 0,
+  "decision": "KILL",
+  "kill_reason": "merits",
+  "criteria": [
+    {
+      "name": "min_sharpe",
+      "required": ">= 1.0",
+      "observed": 0.42,
+      "pass": false
+    },
+    {
+      "name": "max_drawdown",
+      "required": "<= 0.30",
+      "observed": 0.18,
+      "pass": true
+    },
+    {
+      "name": "min_hit_rate",
+      "required": ">= 0.52",
+      "observed": 0.51,
+      "pass": false
+    },
+    {
+      "name": "stability_3_of_4",
+      "required": "3/4 folds sign-consistent",
+      "observed": "2/4",
+      "pass": false
+    },
+    {
+      "name": "deflated_sharpe",
+      "required": ">= 0.95",
+      "observed": 0.31,
+      "pass": false
+    }
+  ],
+  "iterate_params": null,
+  "justification": "One paragraph citing the pre-registered numbers above.",
+  "referee_model": "codex <model id>",
+  "timestamp": "2026-07-07T12:00:00+00:00"
+}
