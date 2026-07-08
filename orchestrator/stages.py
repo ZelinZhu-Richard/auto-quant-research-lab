@@ -225,6 +225,12 @@ def validate_decision(text: str, declared_grid: list[dict],
                 f"ITERATE must name the FIRST untried grid point {untried[0]}, "
                 f"got {decision.get('iterate_params')}"
             )
+    elif decision.get("iterate_params") is not None:
+        # SPEC §10: iterate_params is the next grid point or null — only
+        # ITERATE may carry one.
+        raise StageFailure(
+            f"{decision['decision']} must have iterate_params=null, "
+            f"got {decision.get('iterate_params')}")
     return decision
 
 
