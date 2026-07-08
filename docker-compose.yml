@@ -1,0 +1,62 @@
+# Overnight-run topology (PROJECT_BRIEF §7).
+#
+#   docker compose run --rm dryrun     # A6 acceptance: dry-run in-container
+#   docker compose run --rm lab        # live overnight loop (post-Gate H)
+#
+# The lab container sits on an INTERNAL-ONLY network; its sole egress path
+# is the tinyproxy sidecar, which forwards only to the LLM API domains.
+# LLM credentials are NOT baked anywhere; the human passes them at launch
+# (ANTHROPIC_API_KEY / OPENAI_API_KEY env, or a read-only ~/.codex mount).
+
+services:
+  proxy:
+    build: docker/proxy
+    networks: [internal, egress]
+    restart: unless-stopped
+
+  lab:
+    build: .
+    depends_on: [proxy]
+    networks: [internal]
+    environment:
+      HTTP_PROXY: http://proxy:8888
+      HTTPS_PROXY: http://proxy:8888
+      NO_PROXY: ""
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      # repo read-write EXCEPT the frozen zone and the data (R1/R2/§7)
+      - .:/workspace
+      - ./engine:/workspace/engine:ro
+      - ./data:/workspace/data:ro
+    working_dir: /workspace
+    mem_limit: 4g
+    cpus: 2
+    command: >
+      uv run python -m orchestrator.loop --mode live
+      --run-id ${RUN_ID:-overnight}
+
+  # A6 acceptance service: no credentials, same mounts and network posture.
+  # Clones the repo inside the container so its per-stage commits never
+  # touch the real audit spine.
+  dryrun:
+    build: .
+    depends_on: [proxy]
+    networks: [internal]
+    environment:
+      HTTP_PROXY: http://proxy:8888
+      HTTPS_PROXY: http://proxy:8888
+      NO_PROXY: ""
+    volumes:
+      - .:/workspace
+      - ./engine:/workspace/engine:ro
+      - ./data:/workspace/data:ro
+    working_dir: /workspace
+    mem_limit: 4g
+    cpus: 2
+    command: bash scripts/container_dryrun.sh
+
+networks:
+  internal:
+    internal: true
+  egress:

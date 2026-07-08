@@ -1,0 +1,11 @@
+# Egress allowlist (PROJECT_BRIEF §7). Verified 2026-07-08:
+# - claude CLI -> api.anthropic.com
+# - codex CLI in ChatGPT-OAuth mode -> chatgpt.com (observed live:
+#   wss://chatgpt.com/backend-api/codex/responses), token refresh via
+#   auth.openai.com
+# - codex CLI in API-key mode -> api.openai.com
+api.anthropic.com
+chatgpt.com
+*.chatgpt.com
+auth.openai.com
+api.openai.com
