@@ -256,7 +256,10 @@ class Loop:
         self._state(hid, "S4", iteration=results.get("iteration"))
         if canned:
             self._mock_log("S4", "mechanical referee")
-            decision = dryrun.mechanical_referee(blocks, results)
+            # same validation path as live output — nothing bypasses it
+            decision = validate_decision(
+                json.dumps(dryrun.mechanical_referee(blocks, results)),
+                blocks["grid"], results["iteration_history"])
         else:
             results_text = json.dumps(results, indent=2)
             text = self.llm.codex_text(

@@ -209,6 +209,10 @@ def validate_decision(text: str, declared_grid: list[dict],
     missing = required_keys - decision.keys()
     if missing:
         raise StageFailure(f"decision.json missing keys: {sorted(missing)}")
+    extra = decision.keys() - required_keys
+    if extra:
+        # SPEC §13: the referee emits the §10 schema and NOTHING else
+        raise StageFailure(f"decision.json has unexpected keys: {sorted(extra)}")
     if decision.get("decision") not in {"KILL", "ITERATE", "PROMOTE"}:
         raise StageFailure(f"invalid decision {decision.get('decision')!r}")
     # SPEC §10: the referee NEVER writes "infrastructure" (orchestrator-
