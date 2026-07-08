@@ -15,6 +15,13 @@
   advance the window past an empty batch. Harmless here (those symbols are
   universe-ineligible by the listed-within-30-days rule) but the report
   label is misleading.
+- [2026-07-08 | setup | A6] The egress allowlist holds exactly the two
+  VERIFIED domains (api.anthropic.com; chatgpt.com for codex ChatGPT-OAuth
+  mode, observed live). If an overnight run halts because codex needs a
+  token-refresh domain (suspected but UNVERIFIED: auth.openai.com), the
+  failure will be visible in STATE.md/toolcalls; add the observed domain to
+  docker/proxy/filter via an R5 review gate. Do not pre-add unverified
+  domains.
 - [2026-07-07 | setup | protocol interpretation] A1 review round 2 FAILed
   with three NEW findings (not repeats), all of which Claude agreed with
   and fixed. Section 8's "if still FAIL: STOP, await human arbitration"

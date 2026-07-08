@@ -5,7 +5,7 @@
 # 3. reaching pypi.org must fail (internal network + proxy allowlist).
 set -u
 
-echo "=== [1/3] read-only engine mount ==="
+echo "=== [1/3] read-only mounts + R2 physical absence ==="
 if touch /workspace/engine/_write_probe 2>/dev/null; then
     rm -f /workspace/engine/_write_probe
     echo "FAIL: engine/ is writable inside the container"
@@ -18,6 +18,14 @@ if touch /workspace/data/_write_probe 2>/dev/null; then
     exit 1
 fi
 echo "ok: data/ write refused"
+for forbidden in all raw holdout; do
+    if [ -e "/workspace/data/$forbidden" ]; then
+        echo "FAIL: data/$forbidden exists inside the container (R2)"
+        exit 1
+    fi
+done
+echo "ok: data/ contains only train_val + audit JSONs (R2)"
+ls /workspace/data
 
 echo "=== [2/3] no package-registry egress ==="
 if curl -sS --max-time 15 https://pypi.org/simple/ -o /dev/null 2>/dev/null; then

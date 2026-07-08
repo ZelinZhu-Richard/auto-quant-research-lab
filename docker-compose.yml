@@ -4,9 +4,15 @@
 #   docker compose run --rm lab        # live overnight loop (post-Gate H)
 #
 # The lab container sits on an INTERNAL-ONLY network; its sole egress path
-# is the tinyproxy sidecar, which forwards only to the LLM API domains.
-# LLM credentials are NOT baked anywhere; the human passes them at launch
-# (ANTHROPIC_API_KEY / OPENAI_API_KEY env, or a read-only ~/.codex mount).
+# is the tinyproxy sidecar, which forwards only to the two VERIFIED LLM
+# API domains. R2: only data/train_val (+ the two committed audit JSONs)
+# exists inside the container — data/all and data/raw hold holdout-period
+# bars and are blotted out by an empty read-only mount.
+#
+# R6: this file wires NO credentials. Injecting LLM API keys is a HUMAN
+# launch-time action at Gate H, e.g.:
+#   docker compose run --rm -e ANTHROPIC_API_KEY -e OPENAI_API_KEY lab
+# with the values exported only in the human's shell.
 
 services:
   proxy:
@@ -22,13 +28,14 @@ services:
       HTTP_PROXY: http://proxy:8888
       HTTPS_PROXY: http://proxy:8888
       NO_PROXY: ""
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
       # repo read-write EXCEPT the frozen zone and the data (R1/R2/§7)
       - .:/workspace
       - ./engine:/workspace/engine:ro
-      - ./data:/workspace/data:ro
+      - ./docker/empty:/workspace/data:ro
+      - ./data/train_val:/workspace/data/train_val:ro
+      - ./data/universe.json:/workspace/data/universe.json:ro
+      - ./data/download_report.json:/workspace/data/download_report.json:ro
     working_dir: /workspace
     mem_limit: 4g
     cpus: 2
@@ -50,7 +57,10 @@ services:
     volumes:
       - .:/workspace
       - ./engine:/workspace/engine:ro
-      - ./data:/workspace/data:ro
+      - ./docker/empty:/workspace/data:ro
+      - ./data/train_val:/workspace/data/train_val:ro
+      - ./data/universe.json:/workspace/data/universe.json:ro
+      - ./data/download_report.json:/workspace/data/download_report.json:ro
     working_dir: /workspace
     mem_limit: 4g
     cpus: 2
