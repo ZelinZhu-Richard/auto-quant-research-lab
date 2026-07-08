@@ -18,14 +18,15 @@ if touch /workspace/data/_write_probe 2>/dev/null; then
     exit 1
 fi
 echo "ok: data/ write refused"
-for forbidden in all raw holdout; do
-    if [ -e "/workspace/data/$forbidden" ]; then
-        echo "FAIL: data/$forbidden exists inside the container (R2)"
-        exit 1
-    fi
-done
-echo "ok: data/ contains only train_val + audit JSONs (R2)"
-ls /workspace/data
+# R2 exact-allowlist check: /workspace/data must contain train_val + the
+# two audit JSONs and NOTHING else (dotfiles included in the comparison).
+ACTUAL="$(ls -A /workspace/data | sort | tr '\n' ' ')"
+EXPECTED="download_report.json train_val universe.json "
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+    echo "FAIL: data/ contents inside container: '$ACTUAL' (R2 requires exactly '$EXPECTED')"
+    exit 1
+fi
+echo "ok: data/ contains EXACTLY train_val + audit JSONs (R2): $ACTUAL"
 
 echo "=== [2/3] no package-registry egress ==="
 if curl -sS --max-time 15 https://pypi.org/simple/ -o /dev/null 2>/dev/null; then
