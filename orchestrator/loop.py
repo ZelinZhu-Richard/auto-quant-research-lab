@@ -220,7 +220,11 @@ class Loop:
                 ),
                 "S2-repair", self.timeouts.s2,
             )
-            validate_signal_source(source)
+            repaired_params = validate_signal_source(source)
+            if repaired_params != blocks["params"]:
+                raise StageFailure(
+                    f"S2 repair changed PARAMS to {repaired_params} != "
+                    f"pre-registered {blocks['params']} (R3)")
             (hyp_dir / "signal.py").write_text(source, encoding="utf-8")
             tests = run_hypothesis_tests(self.log, self.repo_root, hid,
                                          self.timeouts.s2)
