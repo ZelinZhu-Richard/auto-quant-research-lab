@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-PARAMS = {"lookback_days": 60, "skip_days": 7}
+PARAMS = {"lookback_days": 120, "skip_days": 7}
 
 def compute_signal(panel: pd.DataFrame) -> pd.Series:
     close = panel["close"]

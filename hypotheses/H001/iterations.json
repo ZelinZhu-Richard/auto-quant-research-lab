@@ -1,1 +1,1 @@
-[{"iteration": 0, "params": {"lookback_days": 90, "skip_days": 7}}, {"iteration": 1, "params": {"lookback_days": 60, "skip_days": 7}}]
+[{"iteration": 0, "params": {"lookback_days": 90, "skip_days": 7}}, {"iteration": 1, "params": {"lookback_days": 60, "skip_days": 7}}, {"iteration": 2, "params": {"lookback_days": 120, "skip_days": 7}}]
