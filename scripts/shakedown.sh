@@ -48,4 +48,5 @@ echo "toolcall log    : runs/${RUN_ID}/toolcalls.jsonl"
 echo "run summary     : runs/${RUN_ID}/summary.json"
 echo
 echo "Next (human): read the git log and every artifact above; push if"
-echo "satisfied; then approve SPEC.md — it freezes at YOUR approval (Gate H)."
+echo "satisfied. SPEC.md is already APPROVED and FROZEN (v1.0, 2026-07-11);"
+echo "a clean shakedown completes Gate H — the overnight loop may then run."
