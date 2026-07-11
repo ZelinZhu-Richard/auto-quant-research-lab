@@ -1,0 +1,11 @@
+{
+  "run_id": "shakedown_20260711_165247",
+  "mode": "live",
+  "cycles": 1,
+  "halt_reason": "max cycles (1) reached",
+  "claude_cost_usd": 0.6162,
+  "codex_tokens": 0,
+  "llm_calls": 6,
+  "consecutive_infra_at_halt": 0,
+  "finished_at": "2026-07-11T16:55:20+00:00"
+}
