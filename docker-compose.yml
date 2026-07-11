@@ -39,9 +39,16 @@ services:
     working_dir: /workspace
     mem_limit: 4g
     cpus: 2
+    # Launcher finalize: the loop makes no run-end commit (its logger
+    # cannot capture its own last act); the launcher commits the toolcall
+    # log + final STATE.md after the orchestrator exits, unlogged by
+    # construction. Loop exit status is preserved.
     command: >
-      uv run python -m orchestrator.loop --mode live
-      --run-id ${RUN_ID:-overnight}
+      bash -c 'uv run python -m orchestrator.loop --mode live
+      --run-id ${RUN_ID:-overnight}; status=$$?;
+      git add runs/ STATE.md && git commit -m
+      "run ${RUN_ID:-overnight}: toolcall log finalized";
+      exit $$status'
 
   # A6 acceptance service: no credentials, same mounts and network posture.
   # Clones the repo inside the container so its per-stage commits never

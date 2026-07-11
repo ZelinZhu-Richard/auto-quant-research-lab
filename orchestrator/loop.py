@@ -423,7 +423,19 @@ class Loop:
         (self.run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
         state.write_state(self.repo_root, "idle", "none", "halted", None,
                           halt_reason[:200], self.consecutive_infra)
-        self._commit(f"run {self.run_id}: halt — {halt_reason[:60]}")
+        # NO run-end commit here — deliberately. The toolcall logger records
+        # every subprocess call including the orchestrator's own git
+        # commits, so a commit made here would be described by log lines
+        # written AFTER it completes: the logger cannot capture its own
+        # last act, and the orphaned lines would dirty the tree until the
+        # next run's `git add -A` swept them into the wrong hypothesis's
+        # first commit. The LAUNCHER (scripts/shakedown.sh, the compose
+        # `lab` command) finalizes after this process exits:
+        #   git add runs/ STATE.md && git commit -m "run <id>: toolcall log finalized"
+        # That commit is unlogged by construction, so nothing escapes.
+        # (SPEC §12's "commit locally" on hard stop is thereby satisfied at
+        # the launcher level; STATE.md is included because the idle-state
+        # write above also lands after the last in-cycle commit.)
         print(f"halt: {halt_reason} after {self.cycles_done} cycle(s)")
         return 0
 

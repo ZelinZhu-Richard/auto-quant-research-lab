@@ -30,6 +30,14 @@ echo "    S1 claude -> S2 codex+tests -> S3 engine -> S4 codex referee -> S5 mem
 uv run python -m orchestrator.loop --mode live --max-cycles 1 \
     --run-id "${RUN_ID}" --wall-clock-hours 1
 
+# Finalize: the orchestrator deliberately makes no run-end commit (its
+# logger would describe that commit only AFTER it completes, orphaning
+# lines in the working tree). The launcher — this script — commits the
+# log once the logger has exited, so nothing escapes. STATE.md is included
+# because the loop's final idle-state write also lands after its last
+# in-cycle commit.
+git add runs/ STATE.md && git commit -m "run ${RUN_ID}: toolcall log finalized"
+
 echo
 echo "=== shakedown results ==="
 echo "--- ledger tail ---"
