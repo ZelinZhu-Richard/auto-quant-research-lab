@@ -53,7 +53,9 @@ STATUS=$?
 # Launcher finalize (same contract as shakedown.sh / the compose lab
 # command): the loop makes no run-end commit; commit the log tail +
 # STATE.md here, pathspec-limited, after the logger has exited.
-git add runs/ STATE.md
+# Fail-closed: every git step's exit code is checked — a git failure must
+# never be mistaken for a clean tree.
+git add runs/ STATE.md || { echo "FAIL: finalize git add failed"; exit 1; }
 if ! git diff --cached --quiet -- runs/ STATE.md; then
     git commit -qm "run container_dryrun: toolcall log finalized" -- runs/ STATE.md \
         || { echo "FAIL: finalize commit failed"; exit 1; }
@@ -63,9 +65,13 @@ if [ $STATUS -ne 0 ]; then
     echo "FAIL: dry-run exited $STATUS"
     exit $STATUS
 fi
-if [ -n "$(git status --porcelain)" ]; then
+if ! PORCELAIN="$(git status --porcelain)"; then
+    echo "FAIL: git status failed after finalize"
+    exit 1
+fi
+if [ -n "$PORCELAIN" ]; then
     echo "FAIL: working tree dirty after finalize:"
-    git status --porcelain
+    echo "$PORCELAIN"
     exit 1
 fi
 echo "ok: working tree clean after launcher finalize"

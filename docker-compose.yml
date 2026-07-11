@@ -48,7 +48,7 @@ services:
     command: >
       bash -c 'uv run python -m orchestrator.loop --mode live
       --run-id ${RUN_ID:-overnight}; status=$$?;
-      git add runs/ STATE.md;
+      git add runs/ STATE.md || exit 70;
       if ! git diff --cached --quiet -- runs/ STATE.md; then
       git commit -m "run ${RUN_ID:-overnight}: toolcall log finalized"
       -- runs/ STATE.md || exit 70; fi;
