@@ -1,0 +1,45 @@
+{
+  "hypothesis_id": "H001",
+  "iteration": 0,
+  "decision": "ITERATE",
+  "kill_reason": null,
+  "criteria": [
+    {
+      "name": "min_sharpe",
+      "required": ">= 1.0",
+      "observed": -1.397395024149964,
+      "pass": false
+    },
+    {
+      "name": "max_drawdown",
+      "required": "<= 0.30",
+      "observed": 0.6032419110208322,
+      "pass": false
+    },
+    {
+      "name": "min_hit_rate",
+      "required": ">= 0.50",
+      "observed": 0.4830421377183967,
+      "pass": false
+    },
+    {
+      "name": "stability_3_of_4",
+      "required": "3/4 folds sign-consistent",
+      "observed": "3/4",
+      "pass": true
+    },
+    {
+      "name": "deflated_sharpe",
+      "required": ">= 0.95",
+      "observed": 0.01073639878348931,
+      "pass": false
+    }
+  ],
+  "iterate_params": {
+    "lookback_days": 60,
+    "skip_days": 7
+  },
+  "justification": "The pre-registered minimum annualized Sharpe of 1.0 failed with an observed value of -1.397395024149964; the pre-registered maximum drawdown of 0.30 failed with an observed value of 0.6032419110208322; the pre-registered minimum hit rate of 0.50 failed with an observed value of 0.4830421377183967; and the pre-registered stability requirement of at least 3 sign-consistent folds passed with 3/4. The required deflated Sharpe ratio of 0.95 failed with an observed value of 0.01073639878348931. Because this is iteration 0 and the ordered pre-registered grid has untried entries, the decision is ITERATE using its first untried entry, {\"lookback_days\":60,\"skip_days\":7}.",
+  "referee_model": "codex gpt-5",
+  "timestamp": "2026-07-11T16:53:44+00:00"
+}
