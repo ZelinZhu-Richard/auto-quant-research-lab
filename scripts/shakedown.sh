@@ -27,16 +27,24 @@ RUN_ID="shakedown_$(date -u +%Y%m%d_%H%M%S)"
 echo
 echo "--- one live cycle (run id: ${RUN_ID}) ---"
 echo "    S1 claude -> S2 codex+tests -> S3 engine -> S4 codex referee -> S5 memo"
+LOOP_STATUS=0
 uv run python -m orchestrator.loop --mode live --max-cycles 1 \
-    --run-id "${RUN_ID}" --wall-clock-hours 1
+    --run-id "${RUN_ID}" --wall-clock-hours 1 || LOOP_STATUS=$?
 
-# Finalize: the orchestrator deliberately makes no run-end commit (its
-# logger would describe that commit only AFTER it completes, orphaning
-# lines in the working tree). The launcher — this script — commits the
-# log once the logger has exited, so nothing escapes. STATE.md is included
-# because the loop's final idle-state write also lands after its last
-# in-cycle commit.
-git add runs/ STATE.md && git commit -m "run ${RUN_ID}: toolcall log finalized"
+# Finalize ON EVERY EXIT, success or failure: the orchestrator deliberately
+# makes no run-end commit (its logger would describe that commit only AFTER
+# it completes, orphaning lines in the working tree) — and even a failed
+# preflight has already appended log lines. The commit is pathspec-limited
+# so anything else that happens to be staged can never ride along (R5).
+git add runs/ STATE.md
+if ! git diff --cached --quiet -- runs/ STATE.md; then
+    git commit -m "run ${RUN_ID}: toolcall log finalized" -- runs/ STATE.md
+fi
+
+if [ "${LOOP_STATUS}" -ne 0 ]; then
+    echo "orchestrator exited ${LOOP_STATUS} — see STATE.md and runs/${RUN_ID}/"
+    exit "${LOOP_STATUS}"
+fi
 
 echo
 echo "=== shakedown results ==="

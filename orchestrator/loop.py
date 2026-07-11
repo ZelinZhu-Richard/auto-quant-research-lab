@@ -1,7 +1,19 @@
 """Overnight research loop (A5). Plain Python, no agent framework.
 
-    uv run python -m orchestrator.loop --mode dry-run --max-cycles 2
-    uv run python -m orchestrator.loop --mode live --run-id overnight_01
+LAUNCH VIA A FINALIZING LAUNCHER — scripts/shakedown.sh (live, one cycle),
+the compose `lab` service (overnight), or scripts/container_dryrun.sh
+(in-container acceptance). This process deliberately makes NO run-end
+commit: its toolcall logger records every subprocess call including its
+own git commits, so it cannot capture its own last act. Every committed
+launcher therefore runs, after this process exits:
+
+    git add runs/ STATE.md && git commit -m "run <id>: toolcall log finalized" -- runs/ STATE.md
+
+(unlogged by construction, pathspec-limited so nothing pre-staged rides
+along; SPEC §12's local commit at hard stop is satisfied at the launcher
+level). A bare `uv run python -m orchestrator.loop ...` invocation leaves
+the log tail, summary.json, and final STATE.md uncommitted — if you run it
+by hand, run the finalize line by hand too.
 
 Sequences S1->S5 per PROJECT_BRIEF §4 / SPEC §14 with:
 - hard stops (SPEC §12): max hypotheses, wall clock, 3 consecutive

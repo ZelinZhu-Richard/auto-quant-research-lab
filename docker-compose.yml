@@ -42,12 +42,16 @@ services:
     # Launcher finalize: the loop makes no run-end commit (its logger
     # cannot capture its own last act); the launcher commits the toolcall
     # log + final STATE.md after the orchestrator exits, unlogged by
-    # construction. Loop exit status is preserved.
+    # construction. Pathspec-limited so pre-staged files never ride along
+    # (R5); a finalize failure exits 70 instead of masking as the loop
+    # status; otherwise the loop's exit status is preserved.
     command: >
       bash -c 'uv run python -m orchestrator.loop --mode live
       --run-id ${RUN_ID:-overnight}; status=$$?;
-      git add runs/ STATE.md && git commit -m
-      "run ${RUN_ID:-overnight}: toolcall log finalized";
+      git add runs/ STATE.md;
+      if ! git diff --cached --quiet -- runs/ STATE.md; then
+      git commit -m "run ${RUN_ID:-overnight}: toolcall log finalized"
+      -- runs/ STATE.md || exit 70; fi;
       exit $$status'
 
   # A6 acceptance service: no credentials, same mounts and network posture.

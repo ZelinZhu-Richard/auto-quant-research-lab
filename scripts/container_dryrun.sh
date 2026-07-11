@@ -49,10 +49,26 @@ git init -q && git add -A && git commit -qm "in-container dry-run baseline"
 uv run python -m orchestrator.loop --mode dry-run --max-cycles 2 \
     --run-id container_dryrun
 STATUS=$?
+
+# Launcher finalize (same contract as shakedown.sh / the compose lab
+# command): the loop makes no run-end commit; commit the log tail +
+# STATE.md here, pathspec-limited, after the logger has exited.
+git add runs/ STATE.md
+if ! git diff --cached --quiet -- runs/ STATE.md; then
+    git commit -qm "run container_dryrun: toolcall log finalized" -- runs/ STATE.md \
+        || { echo "FAIL: finalize commit failed"; exit 1; }
+fi
+
 if [ $STATUS -ne 0 ]; then
     echo "FAIL: dry-run exited $STATUS"
     exit $STATUS
 fi
+if [ -n "$(git status --porcelain)" ]; then
+    echo "FAIL: working tree dirty after finalize:"
+    git status --porcelain
+    exit 1
+fi
+echo "ok: working tree clean after launcher finalize"
 echo "--- ledger ---"
 grep "^#" LEDGER.md
 echo "--- commits ---"
