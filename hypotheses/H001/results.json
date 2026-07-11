@@ -1,8 +1,8 @@
 {
   "hypothesis_id": "H001",
-  "iteration": 1,
+  "iteration": 2,
   "params": {
-    "lookback_days": 60,
+    "lookback_days": 120,
     "skip_days": 7
   },
   "iteration_history": [
@@ -19,11 +19,18 @@
         "lookback_days": 60,
         "skip_days": 7
       }
+    },
+    {
+      "iteration": 2,
+      "params": {
+        "lookback_days": 120,
+        "skip_days": 7
+      }
     }
   ],
-  "generated_at": "2026-07-11T16:54:08.437364+00:00",
+  "generated_at": "2026-07-11T16:54:34.315187+00:00",
   "engine": {
-    "git_commit": "1b503d4a0ed626f302391b1422fb05ba2852c180",
+    "git_commit": "fcd2f620c0bbd1793e7f8595250e1875f5254c03",
     "data_manifest_sha256": "885599371d82fa70ed4f1faf4b9fba6d8857aca4cbb53b7ccebc7a1ad90b1a3b"
   },
   "cost_bps_per_side": 25,
@@ -32,15 +39,15 @@
     "end": "2025-06-30",
     "n_days": 973,
     "n_position_days": 973,
-    "sharpe_annualized": -1.3737629740747377,
-    "sharpe_daily": -0.07190604045993973,
-    "max_drawdown": 0.6016988011429281,
-    "hit_rate": 0.4686536485097636,
-    "turnover_annualized": 89.46813977389519,
-    "mean_daily_return": -0.0007501566569292488,
-    "std_daily_return": 0.01043245674676213,
-    "skew": -0.40078319286942116,
-    "kurtosis_raw": 7.877985043789918
+    "sharpe_annualized": -0.8645199162884288,
+    "sharpe_daily": -0.04525104057410526,
+    "max_drawdown": 0.46806042013023497,
+    "hit_rate": 0.49023638232271327,
+    "turnover_annualized": 64.48458376156219,
+    "mean_daily_return": -0.0004704141612845743,
+    "std_daily_return": 0.010395654007429986,
+    "skew": -0.2746142841733375,
+    "kurtosis_raw": 6.582491241470988
   },
   "folds": [
     {
@@ -48,44 +55,44 @@
       "start": "2022-11-01",
       "end": "2023-06-30",
       "n_days": 242,
-      "sharpe_annualized": -0.27447422059038545,
-      "max_drawdown": 0.16589683947257805,
-      "hit_rate": 0.45454545454545453
+      "sharpe_annualized": -0.7405071646246735,
+      "max_drawdown": 0.23454365477850736,
+      "hit_rate": 0.5
     },
     {
       "fold": 2,
       "start": "2023-07-01",
       "end": "2024-02-29",
       "n_days": 244,
-      "sharpe_annualized": 0.7736230093041087,
-      "max_drawdown": 0.10018132660046908,
-      "hit_rate": 0.5122950819672131
+      "sharpe_annualized": 0.6330423145283474,
+      "max_drawdown": 0.10430513776530836,
+      "hit_rate": 0.5286885245901639
     },
     {
       "fold": 3,
       "start": "2024-03-01",
       "end": "2024-10-31",
       "n_days": 245,
-      "sharpe_annualized": -2.4224400978146363,
-      "max_drawdown": 0.304092074794298,
-      "hit_rate": 0.44081632653061226
+      "sharpe_annualized": -1.414991668522496,
+      "max_drawdown": 0.21128258012650913,
+      "hit_rate": 0.46122448979591835
     },
     {
       "fold": 4,
       "start": "2024-11-01",
       "end": "2025-06-30",
       "n_days": 242,
-      "sharpe_annualized": -2.934536518200074,
-      "max_drawdown": 0.41209040997668045,
-      "hit_rate": 0.4669421487603306
+      "sharpe_annualized": -1.762610809390099,
+      "max_drawdown": 0.30299527345563304,
+      "hit_rate": 0.47107438016528924
     }
   ],
   "referee_inputs": {
     "n_trials": 1,
     "trial_sharpes_daily": [
-      -0.07190604045993973
+      -0.04525104057410526
     ],
-    "deflated_sharpe": 0.011772135712313059
+    "deflated_sharpe": 0.07815576975893723
   },
   "status": "ok"
 }
