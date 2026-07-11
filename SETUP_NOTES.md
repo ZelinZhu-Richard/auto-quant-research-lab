@@ -116,3 +116,17 @@ pandas view (pandas 3.0.3):
     silently worked around.
 11. **`main.py`** is uv-init boilerplate; left untouched and committed as
     found.
+
+## Test inventory (canonical counts, reconciled 2026-07-11)
+
+- `uv run pytest tests/` collects and passes exactly **54** tests — the
+  frozen-engine, harness, and orchestrator-validator suites.
+- `tests/hypothesis_harness.py` adds **4 more** per-hypothesis contract
+  checks (index alignment, determinism, NaN handling, no-lookahead). By
+  design it does not match pytest's `test_*.py` discovery pattern; it runs
+  only when S2 (or shakedown) invokes it explicitly:
+  `QUANTLAB_HYPOTHESIS=H### uv run pytest tests/hypothesis_harness.py`,
+  i.e. 54 + 4 = 58 in that mode.
+- The "56-test suite" phrase in the Gate H session summary was a prose
+  error; no repo artifact carried a wrong count (commit-message counts
+  were accurate at their respective commits).

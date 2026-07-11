@@ -33,7 +33,7 @@ Max lookback: <= 120 calendar days (SPEC §2).}
 ## Kill criteria (pre-registered)
 
 ```json
-{"min_sharpe": 1.0, "max_drawdown": 0.30, "min_hit_rate": 0.52,
+{"min_sharpe": 1.0, "max_drawdown": 0.30, "min_hit_rate": 0.50,
  "min_sign_consistent_folds": 3}
 ```
 

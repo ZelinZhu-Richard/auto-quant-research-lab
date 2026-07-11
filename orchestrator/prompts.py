@@ -22,7 +22,7 @@ EXACTLY (keep every heading; replace every {{placeholder}}). Rules:
 - The three fenced JSON blocks (Parameters, Iteration grid, Kill criteria)
   are machine-parsed. They must be valid JSON in exactly the template's shape.
 - Kill criteria are PRE-REGISTERED and frozen once written (R3). Defaults:
-  min_sharpe 1.0, max_drawdown 0.30, min_hit_rate 0.52,
+  min_sharpe 1.0, max_drawdown 0.30, min_hit_rate 0.50,
   min_sign_consistent_folds 3. Tune only with one written sentence of
   justification.
 - Signals may use only open/high/low/close/volume of the 50-coin panel,

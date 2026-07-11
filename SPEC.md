@@ -1,8 +1,9 @@
 # SPEC.md — Frozen Research Specification
 #
-# STATUS: DRAFT (v0.1). Freezes at Gate H when the human approves it.
-# All thresholds marked PROPOSED are awaiting human approval.
-# After freeze: read every cycle, written by no one. Changes require a new
+# STATUS: v1.0 — APPROVED (Gate H SPEC approval, human, 2026-07-11).
+# Amended at approval per the human's direction: hit-rate floor 0.50
+# (sanity bound; skewed-payoff justification, §8). FROZEN as of this
+# version: read every cycle, written by no one. Changes require a new
 # versioned SPEC and a new run series.
 
 ## 1. Data contract
@@ -178,19 +179,27 @@ and the trial count `N`.
 - Implementation: `engine/metrics.py::deflated_sharpe(returns, n_trials,
   trial_sharpes)` — plain math (no scipy; use `statistics.NormalDist`).
 
-## 8. Kill criteria — template and PROPOSED defaults
+## 8. Kill criteria — template and approved v1.0 defaults
 
 Every hypothesis.md MUST pre-register concrete numbers for all four, before
-any data is touched (R3). Defaults below are PROPOSED starting points; a
+any data is touched (R3). Defaults below are the approved v1.0 values; a
 hypothesis may tune them only WITH WRITTEN JUSTIFICATION in hypothesis.md,
 and never after S1.
 
-| criterion | PROPOSED default | judged on |
+| criterion | approved v1.0 default | judged on |
 |---|---|---|
 | min annualized Sharpe (after costs) | >= 1.0 | aggregate window |
 | max drawdown | <= 0.30 | aggregate window |
-| min hit rate | >= 0.52 | aggregate window |
+| min hit rate | >= 0.50 | aggregate window |
 | stability | `(fold_sharpe > 0) == (aggregate_sharpe > 0)` for >= 3 of 4 folds | folds |
+
+Hit-rate floor rationale (amended 0.52 → 0.50 at Gate H approval,
+2026-07-11, per the approving human): the floor is a SANITY BOUND, not an
+edge requirement. A dollar-neutral long-short book with positively skewed
+payoffs — large winners, small losers — can clear every other criterion
+below a 52% hit rate, so 0.52 would systematically bias against
+skewed-payoff hypotheses. 0.50 excludes only worse-than-coin-flip
+consistency; the edge requirement lives in the Sharpe and DSR criteria.
 
 Sign convention (deterministic, incl. exact zero): a Sharpe is "positive"
 iff strictly `> 0`; zero counts as non-positive. A fold is sign-consistent
@@ -200,7 +209,7 @@ fail-safe toward killing.
 
 Plus one SPEC-global criterion (not tunable per hypothesis):
 
-| criterion | PROPOSED default |
+| criterion | approved v1.0 default |
 |---|---|
 | deflated Sharpe ratio | >= 0.95 to PROMOTE |
 
@@ -240,7 +249,7 @@ Under `## Iteration grid (pre-registered, ordered, max 2)`:
 - Under `## Kill criteria (pre-registered)` a third block:
 
 ```json
-{"min_sharpe": 1.0, "max_drawdown": 0.30, "min_hit_rate": 0.52,
+{"min_sharpe": 1.0, "max_drawdown": 0.30, "min_hit_rate": 0.50,
  "min_sign_consistent_folds": 3}
 ```
 
@@ -307,7 +316,7 @@ Exactly one writer per cycle, chosen by path:
   "criteria": [
     {"name": "min_sharpe", "required": ">= 1.0", "observed": 0.42, "pass": false},
     {"name": "max_drawdown", "required": "<= 0.30", "observed": 0.18, "pass": true},
-    {"name": "min_hit_rate", "required": ">= 0.52", "observed": 0.51, "pass": false},
+    {"name": "min_hit_rate", "required": ">= 0.50", "observed": 0.51, "pass": true},
     {"name": "stability_3_of_4", "required": "3/4 folds sign-consistent", "observed": "2/4", "pass": false},
     {"name": "deflated_sharpe", "required": ">= 0.95", "observed": 0.31, "pass": false}
   ],
@@ -342,7 +351,7 @@ Exactly one writer per cycle, chosen by path:
 
 ## 12. Hard stops for the overnight loop (enforced by orchestrator/loop.py)
 
-| stop | PROPOSED value |
+| stop | approved v1.0 value |
 |---|---|
 | max hypotheses per run | 30 |
 | wall-clock cap | 6 hours (checked between stages; loop exits cleanly) |
