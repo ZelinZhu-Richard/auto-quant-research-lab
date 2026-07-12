@@ -6,3 +6,7 @@
 {"ts": "2026-07-12T03:17:47Z", "stage": "git", "command": ["git", "commit", "-m", "H002: infra-kill \u2014 S1: claude exited 1: "], "cwd": "/workspace", "duration_s": 0.022, "exit_code": 0, "timed_out": false}
 {"ts": "2026-07-12T03:17:47Z", "stage": "S1", "command": ["claude", "-p", "--output-format", "json", "--max-budget-usd", "2.00", "--no-session-persistence", "--tools", ""], "cwd": "/workspace", "duration_s": 0.681, "exit_code": 1, "timed_out": false}
 {"ts": "2026-07-12T03:17:48Z", "stage": "git", "command": ["git", "status", "--porcelain"], "cwd": "/workspace", "duration_s": 0.013, "exit_code": 0, "timed_out": false}
+{"ts": "2026-07-12T03:17:48Z", "stage": "git", "command": ["git", "add", "-A"], "cwd": "/workspace", "duration_s": 0.012, "exit_code": 0, "timed_out": false}
+{"ts": "2026-07-12T03:17:48Z", "stage": "git", "command": ["git", "commit", "-m", "H003: infra-kill \u2014 S1: claude exited 1: "], "cwd": "/workspace", "duration_s": 0.02, "exit_code": 0, "timed_out": false}
+{"ts": "2026-07-12T03:17:48Z", "stage": "S1", "command": ["claude", "-p", "--output-format", "json", "--max-budget-usd", "2.00", "--no-session-persistence", "--tools", ""], "cwd": "/workspace", "duration_s": 0.604, "exit_code": 1, "timed_out": false}
+{"ts": "2026-07-12T03:17:48Z", "stage": "git", "command": ["git", "status", "--porcelain"], "cwd": "/workspace", "duration_s": 0.011, "exit_code": 0, "timed_out": false}

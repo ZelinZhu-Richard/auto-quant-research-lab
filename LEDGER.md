@@ -4,3 +4,4 @@
 #1 | xsec_momentum_skip_week | ITERATED->KILLED(merits) | sharpe=-0.8645 dsr=0.0782 dd=0.4681 hit=0.4902 | tests=pass
 #2 | unknown | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
 #3 | unknown | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
+#4 | unknown | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
