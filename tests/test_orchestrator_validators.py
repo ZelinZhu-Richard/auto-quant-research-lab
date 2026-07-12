@@ -21,6 +21,7 @@ from orchestrator.stages import (
 
 GRID = [{"lookback_days": 60}, {"lookback_days": 120}]
 HISTORY = [{"iteration": 0, "params": {"lookback_days": 90}}]
+PINNED = "test"  # expected_referee_model used across these tests
 
 
 def _decision(**overrides) -> dict:
@@ -28,32 +29,41 @@ def _decision(**overrides) -> dict:
         "hypothesis_id": "H001", "iteration": 0, "decision": "KILL",
         "kill_reason": "merits", "criteria": [], "iterate_params": None,
         "justification": "fails pre-registered min_sharpe",
-        "referee_model": "test", "timestamp": "2026-07-08T00:00:00Z",
+        "referee_model": PINNED, "timestamp": "2026-07-08T00:00:00Z",
     }
     base.update(overrides)
     return base
 
 
 def test_valid_decisions_pass():
-    validate_decision(json.dumps(_decision()), GRID, HISTORY)
+    validate_decision(json.dumps(_decision()), GRID, HISTORY, PINNED)
     validate_decision(json.dumps(_decision(
-        decision="PROMOTE", kill_reason=None)), GRID, HISTORY)
+        decision="PROMOTE", kill_reason=None)), GRID, HISTORY, PINNED)
     validate_decision(json.dumps(_decision(
         decision="ITERATE", kill_reason=None,
-        iterate_params={"lookback_days": 60})), GRID, HISTORY)
+        iterate_params={"lookback_days": 60})), GRID, HISTORY, PINNED)
 
 
 def test_missing_key_rejected():
     incomplete = _decision()
     del incomplete["iterate_params"]
     with pytest.raises(StageFailure, match="missing keys"):
-        validate_decision(json.dumps(incomplete), GRID, HISTORY)
+        validate_decision(json.dumps(incomplete), GRID, HISTORY, PINNED)
 
 
 def test_extra_key_rejected():
     with pytest.raises(StageFailure, match="unexpected keys"):
         validate_decision(json.dumps(_decision(suggested_fix="try vol scaling")),
-                          GRID, HISTORY)
+                          GRID, HISTORY, PINNED)
+
+
+def test_referee_model_pin_enforced():
+    """Model identity is pinned by the orchestrator — a referee reporting
+    any other identity is rejected, not persisted."""
+    with pytest.raises(StageFailure, match="pinned"):
+        validate_decision(
+            json.dumps(_decision(referee_model="codex gpt-5.5")),
+            GRID, HISTORY, PINNED)
 
 
 def test_incoherent_combinations_rejected():
@@ -70,7 +80,7 @@ def test_incoherent_combinations_rejected():
     ]
     for bad in cases:
         with pytest.raises(StageFailure):
-            validate_decision(json.dumps(bad), GRID, HISTORY)
+            validate_decision(json.dumps(bad), GRID, HISTORY, PINNED)
 
 
 def test_iterate_with_exhausted_grid_rejected():
@@ -79,7 +89,7 @@ def test_iterate_with_exhausted_grid_rejected():
     bad = _decision(decision="ITERATE", kill_reason=None,
                     iterate_params=GRID[0])
     with pytest.raises(StageFailure, match="exhausted"):
-        validate_decision(json.dumps(bad), GRID, history)
+        validate_decision(json.dumps(bad), GRID, history, PINNED)
 
 
 def test_mechanical_referee_passes_strict_validator():
@@ -95,7 +105,8 @@ def test_mechanical_referee_passes_strict_validator():
     }
     decision = dryrun.mechanical_referee(blocks, results)
     validate_decision(json.dumps(decision), blocks["grid"],
-                      results["iteration_history"])
+                      results["iteration_history"],
+                      expected_referee_model="dry-run-mechanical-referee")
 
 
 def test_hypothesis_md_validation():

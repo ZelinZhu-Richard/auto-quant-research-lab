@@ -171,9 +171,11 @@ class Loop:
             codex_help = run_logged(self.log, ["codex", "exec", "--help"],
                                     cwd=self.repo_root, timeout_s=120,
                                     stage="preflight")
-            # every flag LiveLlm.codex_text actually passes
+            # every flag LiveLlm.codex_text actually passes — including the
+            # model/effort pins (-m, -c), which must never silently drift
             for flag in ("--output-last-message", "--skip-git-repo-check",
-                         "-s, --sandbox", "-C, --cd"):
+                         "-s, --sandbox", "-C, --cd", "-m, --model",
+                         "-c, --config"):
                 if flag not in codex_help.stdout:
                     raise SystemExit(f"preflight: codex exec --help lacks {flag!r}")
 
@@ -277,7 +279,8 @@ class Loop:
             # same validation path as live output — nothing bypasses it
             decision = validate_decision(
                 json.dumps(dryrun.mechanical_referee(blocks, results)),
-                blocks["grid"], results["iteration_history"])
+                blocks["grid"], results["iteration_history"],
+                expected_referee_model="dry-run-mechanical-referee")
         else:
             results_text = json.dumps(results, indent=2)
             text = self.llm.codex_text(
@@ -286,8 +289,9 @@ class Loop:
                                    referee_model=f"codex {S4_CODEX_MODEL}"),
                 "S4", self.timeouts.s4, model=S4_CODEX_MODEL)
             # R4: invalid referee output is a mid-cycle failure => infra-kill
-            decision = validate_decision(text, blocks["grid"],
-                                         results["iteration_history"])
+            decision = validate_decision(
+                text, blocks["grid"], results["iteration_history"],
+                expected_referee_model=f"codex {S4_CODEX_MODEL}")
         (self.repo_root / "hypotheses" / hid / "decision.json").write_text(
             json.dumps(decision, indent=2) + "\n", encoding="utf-8")
         self._commit(f"{hid}/S4: referee ({decision['decision']})")
