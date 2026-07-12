@@ -137,23 +137,36 @@ class LiveLlm:
             stage=stage,
             stdin_text=prompt,
         )
+        # Parse and ACCOUNT FIRST: a failed call still bills (SPEC §12
+        # cost ceiling) — the payload carries total_cost_usd even when the
+        # call errored, and every invocation counts as a call.
+        payload = None
+        try:
+            parsed = json.loads(result.stdout)
+            if isinstance(parsed, dict):  # `[]` etc. must not AttributeError
+                payload = parsed
+        except json.JSONDecodeError:
+            payload = None
+        self.usage.add_claude(payload.get("total_cost_usd") if payload else None)
+
         if result.timed_out or result.exit_code != 0:
             raise StageFailure(
                 f"{stage}: claude exited {result.exit_code}"
                 f"{' (timeout)' if result.timed_out else ''}: "
                 f"{_claude_failure_detail(result)}"
             )
-        try:
-            payload = json.loads(result.stdout)
-            if payload.get("is_error"):
-                # zero-exit error payload: must never flow into an artifact
-                raise StageFailure(
-                    f"{stage}: claude reported is_error: "
-                    f"{str(payload.get('result', ''))[-300:]}")
-            text = payload["result"]
-            self.usage.add_claude(payload.get("total_cost_usd"))
-        except (json.JSONDecodeError, KeyError) as exc:
-            raise StageFailure(f"{stage}: unparseable claude output: {exc}") from exc
+        if payload is None:
+            raise StageFailure(
+                f"{stage}: claude stdout is not a JSON object: "
+                f"{_output_tail(result)}")
+        if payload.get("is_error"):
+            # zero-exit error payload: must never flow into an artifact
+            raise StageFailure(
+                f"{stage}: claude reported is_error: "
+                f"{str(payload.get('result', ''))[-300:]}")
+        if "result" not in payload:
+            raise StageFailure(f"{stage}: claude payload lacks a result field")
+        text = payload["result"]
         # model audit: claude is not pinned by flag; record what the CLI
         # reports it actually used (modelUsage keys in the JSON payload)
         reported = payload.get("modelUsage")

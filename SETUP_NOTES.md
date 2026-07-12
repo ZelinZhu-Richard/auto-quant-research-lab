@@ -140,28 +140,44 @@ pandas view (pandas 3.0.3):
 
 Prereq once per shell: `export ANTHROPIC_API_KEY=sk-ant-...`
 
+Step 0 — ALWAYS redeploy the proxy first (it is a persistent container;
+`docker compose run lab` reuses a running sidecar, so a filter change is
+not live until the container is recreated from the rebuilt image):
+
+    docker compose up -d --build --force-recreate proxy
+
 Supervised mini-run (N cycles, 1h cap; the compose `lab` command is
 hard-wired for overnight, so a mini-run overrides it and must carry the
 same seed + finalize chain):
 
     RUN_ID="minirun_$(date -u +%Y%m%d_%H%M%S)" docker compose run --rm \
       -e RUN_ID -e ANTHROPIC_API_KEY \
-      -v "$HOME/.codex:/home/labuser/.codex-seed:ro" \
+      -v quantlab_codex_home:/home/labuser/.codex \
+      -v "$HOME/.codex/auth.json:/home/labuser/.codex-seed/auth.json:ro" \
       lab bash -c 'bash scripts/seed_codex_home.sh || exit 71; uv run python -m orchestrator.loop --mode live --run-id "$RUN_ID" --max-cycles 3 --wall-clock-hours 1; status=$?; git add runs/ STATE.md || exit 70; if ! git diff --cached --quiet -- runs/ STATE.md; then git commit -m "run $RUN_ID: toolcall log finalized" -- runs/ STATE.md || exit 70; fi; exit $status'
 
 Full overnight run (uses the compose command as committed):
 
     RUN_ID="overnight_$(date -u +%Y%m%d)" docker compose run --rm \
       -e RUN_ID -e ANTHROPIC_API_KEY \
-      -v "$HOME/.codex:/home/labuser/.codex-seed:ro" lab
+      -v quantlab_codex_home:/home/labuser/.codex \
+      -v "$HOME/.codex/auth.json:/home/labuser/.codex-seed/auth.json:ro" lab
 
-Notes: codex auth is mounted READ-ONLY at the `.codex-seed` staging path
-and copied into a writable in-container `~/.codex` by
-scripts/seed_codex_home.sh (codex hard-fails at startup on a read-only
-home — minirun_20260712_032156). Host `~/.codex` is never mounted rw.
-Exit 71 = seeding failed; exit 70 = log finalization failed. After the
-run: read git log + LEDGER before executing anything, regenerate the
-README table (`uv run python scripts/ledger_stats.py`), push.
+Notes:
+- ONLY auth.json is mounted (read-only, staging path) — never the whole
+  host ~/.codex: personal config.toml would activate host plugin/notify/
+  MCP configuration in the unattended container, and models/effort are
+  pinned by orchestrator flags anyway. Host ~/.codex is never mounted rw.
+- `quantlab_codex_home` is a named volume persisting the WRITABLE
+  in-container ~/.codex across --rm runs: OAuth refresh rotates tokens,
+  so the volume's refreshed state must survive and is preferred over the
+  host seed on later launches. After a host re-login, force a reseed with
+  `-e CODEX_SEED_FORCE=1`; to wipe container-side credentials entirely:
+  `docker volume rm quantlab_codex_home`.
+- Exit 71 = seeding failed; exit 70 = log finalization failed.
+- After the run: read git log + LEDGER before executing anything,
+  regenerate the README table (`uv run python scripts/ledger_stats.py`),
+  push.
 
 ## Canonical review-gate procedure (Section 8 interpretation — RATIFIED)
 

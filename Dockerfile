@@ -20,6 +20,11 @@ RUN useradd --create-home --uid 1000 labuser
 USER labuser
 ENV HOME=/home/labuser
 
+# Pre-create the codex home as labuser: the runbook mounts a named volume
+# here, and a fresh volume copies THIS ownership — without it Docker
+# root-creates the mount point and the seed script cannot write into it.
+RUN mkdir -m 700 /home/labuser/.codex
+
 # Baked project environment OUTSIDE the mounted workspace, so the bind
 # mount cannot shadow it and runtime never needs to resolve packages.
 ENV UV_PROJECT_ENVIRONMENT=/home/labuser/venv

@@ -67,6 +67,20 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _squeeze(text: str, limit: int) -> str:
+    """One-line middle-ellipsis for fixed-width diagnostic slots (STATE.md
+    line, commit title, console). Failure text carries the stage prefix at
+    the HEAD and the fatal line at the TAIL — plain head-slicing buried
+    minirun_20260712's fatal error behind a benign warning, so keep both
+    ends and drop the middle."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    head = max(10, limit // 4)
+    tail = limit - head - 1
+    return text[:head] + "…" + text[-tail:]
+
+
 class Loop:
     def __init__(self, repo_root: Path, mode: str, run_id: str,
                  max_hypotheses: int, wall_clock_hours: float,
@@ -362,9 +376,9 @@ class Loop:
                             "KILLED(infrastructure)", None, None, None, None,
                             tests_pass)
         self.consecutive_infra += 1
-        self._state(hid, "infra-killed", error=error[:200])
-        self._commit(f"{hid}: infra-kill — {error[:60]}")
-        print(f"  INFRA-KILL {hid}: {error[:120]}")
+        self._state(hid, "infra-killed", error=_squeeze(error, 200))
+        self._commit(f"{hid}: infra-kill — {_squeeze(error, 60)}")
+        print(f"  INFRA-KILL {hid}: {_squeeze(error, 160)}")
 
     def run_cycle(self) -> None:
         number = state.next_hypothesis_number(self.repo_root)
@@ -418,6 +432,14 @@ class Loop:
             self.consecutive_infra = 0
         except StageFailure as exc:
             self._infra_kill(number, hid, name, str(exc), tests_pass)
+        except HardStop:
+            raise  # clean halt path (SPEC §12) — never converted to a kill
+        except Exception as exc:  # noqa: BLE001 — R4: ANY mid-cycle failure
+            # => KILLED(infrastructure) and the loop continues; an
+            # unexpected exception must not crash the overnight run
+            self._infra_kill(number, hid, name,
+                             f"unhandled {type(exc).__name__}: {exc}",
+                             tests_pass)
         self.cycles_done += 1
         # SPEC §12: a hard stop tripped between stages propagates as
         # HardStop out of run_cycle — STATE.md records the reason, the run

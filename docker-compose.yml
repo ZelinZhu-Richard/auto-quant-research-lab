@@ -4,19 +4,25 @@
 #   docker compose run --rm lab        # live overnight loop (post-Gate H)
 #
 # The lab container sits on an INTERNAL-ONLY network; its sole egress path
-# is the tinyproxy sidecar, which forwards only to the two VERIFIED LLM
-# API domains. R2: only data/train_val (+ the two committed audit JSONs)
-# exists inside the container — data/all and data/raw hold holdout-period
-# bars and are blotted out by an empty read-only mount.
+# is the tinyproxy sidecar, which forwards only to the three VERIFIED LLM
+# API domains (docker/proxy/filter). The proxy is persistent: after any
+# filter change, redeploy it (docker compose up -d --build
+# --force-recreate proxy) or a running sidecar keeps the old rules.
+# R2: only data/train_val (+ the two committed audit JSONs) exists inside
+# the container — data/all and data/raw hold holdout-period bars and are
+# blotted out by an empty read-only mount.
 #
 # R6: this file wires NO credentials. Injecting them is a HUMAN
-# launch-time action (values exported only in the human's shell):
+# launch-time action (values exported only in the human's shell); ONLY
+# the codex auth.json is mounted, read-only, at a staging path, plus a
+# named volume for the writable in-container home (OAuth refresh rotates
+# tokens; the volume persists refreshed state across --rm runs):
 #   RUN_ID=... docker compose run --rm -e RUN_ID -e ANTHROPIC_API_KEY \
-#     -v "$HOME/.codex:/home/labuser/.codex-seed:ro" lab
-# The codex auth is mounted READ-ONLY at the .codex-seed staging path;
-# scripts/seed_codex_home.sh copies it into a writable in-container
-# ~/.codex before the loop starts (codex hard-fails on a read-only home;
-# host ~/.codex is never mounted rw). Full runbook: SETUP_NOTES.md.
+#     -v quantlab_codex_home:/home/labuser/.codex \
+#     -v "$HOME/.codex/auth.json:/home/labuser/.codex-seed/auth.json:ro" lab
+# scripts/seed_codex_home.sh seeds the home on first launch (codex
+# hard-fails on a read-only home; host ~/.codex is never mounted rw).
+# Full runbook: SETUP_NOTES.md.
 
 services:
   proxy:
