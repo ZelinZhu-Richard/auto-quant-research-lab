@@ -262,9 +262,10 @@ framework) · headless `claude` and `codex` CLIs.
 Models per stage (pinned in `orchestrator/stages.py`, audited per run in
 `runs/<id>/summary.json`): S1/S5 hypothesis and memo — Claude (CLI
 default, identity recorded each run); S2 implementation — `gpt-5.6-sol`
-at `xhigh` effort; S4 referee — `gpt-5.6-terra`, deliberately not the
-strongest model available: **the referee needs obedience, not
-capability**.
+at `xhigh` effort; S4 referee — `gpt-5.6-terra` at the effort floor
+(`none`), deliberately not the strongest configuration available: **the
+referee needs obedience, not capability** — its job is mechanical
+comparison, not thinking.
 
 This repository was built by Claude Code, with OpenAI Codex as the
 structural reviewer, under the gate protocol documented in

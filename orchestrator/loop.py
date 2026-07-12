@@ -38,6 +38,7 @@ from orchestrator.cli_runner import ToolCallLog, run_logged
 from orchestrator.stages import (
     S2_CODEX_EFFORT,
     S2_CODEX_MODEL,
+    S4_CODEX_EFFORT,
     S4_CODEX_MODEL,
     LiveLlm,
     LlmUsage,
@@ -98,6 +99,7 @@ class Loop:
         self.timeouts = StageTimeouts()
         self.consecutive_infra = 0
         self.cycles_done = 0
+        self._ledger_written = False
         self.llm = LiveLlm(self.log, repo_root, self.timeouts, self.usage) \
             if mode == "live" else None
         self.phase = "overnight" if mode == "live" else "dry-run"
@@ -301,7 +303,8 @@ class Loop:
                 prompts.s4_referee((self.repo_root / "SPEC.md").read_text(),
                                    hypothesis_md, results_text,
                                    referee_model=f"codex {S4_CODEX_MODEL}"),
-                "S4", self.timeouts.s4, model=S4_CODEX_MODEL)
+                "S4", self.timeouts.s4, model=S4_CODEX_MODEL,
+                effort=S4_CODEX_EFFORT)
             # R4: invalid referee output is a mid-cycle failure => infra-kill
             decision = validate_decision(
                 text, blocks["grid"], results["iteration_history"],
@@ -351,6 +354,10 @@ class Loop:
             agg.get("sharpe_annualized"), ref.get("deflated_sharpe"),
             agg.get("max_drawdown"), agg.get("hit_rate"), tests_pass,
         )
+        # one line per hypothesis is an INVARIANT, not bookkeeping: the
+        # ledger line count is the N feeding the deflated Sharpe. Any
+        # failure after this point must never append a second line.
+        self._ledger_written = True
         if decision["decision"] == "PROMOTE":
             state.append_promoted(self.repo_root, hid, name)
         self._state(hid, "done", error="")
@@ -375,14 +382,27 @@ class Loop:
         state.append_ledger(self.repo_root, number, name,
                             "KILLED(infrastructure)", None, None, None, None,
                             tests_pass)
+        self._ledger_written = True
         self.consecutive_infra += 1
         self._state(hid, "infra-killed", error=_squeeze(error, 200))
         self._commit(f"{hid}: infra-kill — {_squeeze(error, 60)}")
         print(f"  INFRA-KILL {hid}: {_squeeze(error, 160)}")
 
+    def _handle_cycle_failure(self, number: int, hid: str, name: str,
+                              error: str, tests_pass: bool) -> None:
+        """R4 kill-and-continue — UNLESS this hypothesis's ledger line was
+        already appended: then a second append would corrupt the N feeding
+        the deflated Sharpe, so the run halts loudly instead."""
+        if self._ledger_written:
+            raise HardStop(
+                f"post-ledger failure for {hid}: {error[:200]} — halting to "
+                "protect the one-line-per-hypothesis invariant")
+        self._infra_kill(number, hid, name, error, tests_pass)
+
     def run_cycle(self) -> None:
         number = state.next_hypothesis_number(self.repo_root)
         hid = f"H{number:03d}"
+        self._ledger_written = False
         canned = None
         if self.mode == "dry-run":
             canned = dryrun.CANNED[self.cycles_done % len(dryrun.CANNED)]
@@ -431,15 +451,15 @@ class Loop:
                               iterations_run)
             self.consecutive_infra = 0
         except StageFailure as exc:
-            self._infra_kill(number, hid, name, str(exc), tests_pass)
+            self._handle_cycle_failure(number, hid, name, str(exc), tests_pass)
         except HardStop:
             raise  # clean halt path (SPEC §12) — never converted to a kill
         except Exception as exc:  # noqa: BLE001 — R4: ANY mid-cycle failure
             # => KILLED(infrastructure) and the loop continues; an
             # unexpected exception must not crash the overnight run
-            self._infra_kill(number, hid, name,
-                             f"unhandled {type(exc).__name__}: {exc}",
-                             tests_pass)
+            self._handle_cycle_failure(
+                number, hid, name,
+                f"unhandled {type(exc).__name__}: {exc}", tests_pass)
         self.cycles_done += 1
         # SPEC §12: a hard stop tripped between stages propagates as
         # HardStop out of run_cycle — STATE.md records the reason, the run

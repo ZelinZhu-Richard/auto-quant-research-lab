@@ -32,8 +32,13 @@ class StageFailure(Exception):
 S2_CODEX_MODEL = "gpt-5.6-sol"
 S2_CODEX_EFFORT = "xhigh"
 S4_CODEX_MODEL = "gpt-5.6-terra"  # referee: obedience, not capability
-# NOTE: S4 reasoning effort is deliberately NOT pinned (the directive named
-# only the model); it still inherits from the mounted config — see BACKLOG.
+# S4 effort pinned to the FLOOR by arbitration decision 2026-07-12: the
+# referee is deliberately MINIMUM-effort — determinism and recorded
+# identity over capability; its job is mechanical comparison, not
+# thinking. "none" verified as the lowest server-accepted value for this
+# model (enum from the server error message; live-probed OK), since
+# auth-only seeding means no config value exists to inherit.
+S4_CODEX_EFFORT = "none"
 
 
 @dataclass
@@ -99,14 +104,17 @@ def _claude_failure_detail(result: CliResult, limit: int = 300) -> str:
     """claude -p reports failures as JSON on STDOUT (the `result` field);
     stderr is typically empty — minirun_20260712's S1 kills read
     'claude exited 1:' with nothing after the colon. Prefer the parsed
-    result text, fall back to the combined tail."""
+    result text, fall back to the combined tail. Valid-but-non-object
+    JSON (`[]`, a bare string, a number) must fall through, never
+    AttributeError (gate arbitration 2026-07-12, finding 1)."""
     try:
         payload = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        payload = None
+    if isinstance(payload, dict):
         detail = str(payload.get("result", "")).strip()
         if detail:
             return detail[-limit:]
-    except (json.JSONDecodeError, TypeError):
-        pass
     return _output_tail(result, limit)
 
 

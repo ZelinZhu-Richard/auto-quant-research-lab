@@ -68,6 +68,32 @@ def test_claude_detail_never_empty_when_output_exists():
     assert detail == "plain crash text"
 
 
+def test_claude_detail_non_dict_json_on_nonzero_exit_no_crash():
+    """Gate arbitration finding 1 (recurrence): valid non-object JSON on a
+    NONZERO exit must fall through to the tail — list, string, and number
+    payloads all previously reached .get() and raised AttributeError."""
+    for stdout in ("[]", '"just a string"', "123"):
+        detail = _claude_failure_detail(
+            _result(stdout=stdout, stderr="real error on stderr", exit_code=1))
+        assert "real error on stderr" in detail  # tail fallback, no crash
+
+
+def test_claude_text_nonzero_exit_with_list_json_is_stagefailure():
+    """End-to-end through claude_text: the nonzero-exit path must raise
+    StageFailure (which run_cycle infra-kills), never AttributeError."""
+    from orchestrator.stages import LiveLlm, LlmUsage, StageFailure, StageTimeouts
+    from unittest import mock
+
+    usage = LlmUsage()
+    llm = LiveLlm(log=mock.Mock(), repo_root=Path("."),
+                  timeouts=StageTimeouts(), usage=usage)
+    with mock.patch("orchestrator.stages.run_logged",
+                    return_value=_result(stdout="[]", stderr="boom", exit_code=1)):
+        with pytest.raises(StageFailure, match="boom"):
+            llm.claude_text("p", "S1", 10)
+    assert usage.calls == 1  # failed call still counted
+
+
 def test_claude_non_object_json_is_stagefailure_not_crash():
     """`[]` parses as JSON but is not a dict — must become StageFailure
     inside claude_text, never AttributeError (which would crash the run;

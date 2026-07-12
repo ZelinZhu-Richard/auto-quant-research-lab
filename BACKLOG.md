@@ -51,3 +51,11 @@
   Telemetry domains observed refused in minirun_20260712 proxy logs
   (*.datadoghq.com, ab.chatgpt.com) stay blocked: codex demonstrably
   proceeds without them.
+- [2026-07-12 | model pinning] RESOLVED (2026-07-11 entry): S4 reasoning
+  effort is now pinned by flag per arbitration decision — to the FLOOR
+  ("none"), deliberately minimum-effort for the referee: determinism and
+  recorded identity over capability. Enum verified from the server error
+  message (none/minimal/low/medium/high/xhigh), terra@none live-probed
+  OK. Became necessary once auth-only seeding removed the config-
+  inherited value. S1/S5 (claude) remain unpinned by flag; summary.json
+  records observed identity per run.

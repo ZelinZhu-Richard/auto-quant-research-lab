@@ -140,11 +140,13 @@ pandas view (pandas 3.0.3):
 
 Prereq once per shell: `export ANTHROPIC_API_KEY=sk-ant-...`
 
-Step 0 — ALWAYS redeploy the proxy first (it is a persistent container;
-`docker compose run lab` reuses a running sidecar, so a filter change is
-not live until the container is recreated from the rebuilt image):
+Step 0 — ALWAYS rebuild BOTH images and redeploy the proxy first. The
+proxy is a persistent container (`docker compose run lab` reuses a
+running sidecar, so a filter change is not live until it is recreated),
+and a stale lab image lacks required init (e.g. the ~/.codex mount-point
+ownership) even when the repo is current:
 
-    docker compose up -d --build --force-recreate proxy
+    docker compose build && docker compose up -d --force-recreate proxy
 
 Supervised mini-run (N cycles, 1h cap; the compose `lab` command is
 hard-wired for overnight, so a mini-run overrides it and must carry the
@@ -166,8 +168,10 @@ Full overnight run (uses the compose command as committed):
 Notes:
 - ONLY auth.json is mounted (read-only, staging path) — never the whole
   host ~/.codex: personal config.toml would activate host plugin/notify/
-  MCP configuration in the unattended container, and models/effort are
-  pinned by orchestrator flags anyway. Host ~/.codex is never mounted rw.
+  MCP configuration in the unattended container, and both codex MODELS
+  and EFFORTS are pinned by orchestrator flags (S2 gpt-5.6-sol@xhigh,
+  S4 gpt-5.6-terra@none — arbitration decision 2026-07-12), recorded per
+  run in summary.json. Host ~/.codex is never mounted rw.
 - `quantlab_codex_home` is a named volume persisting the WRITABLE
   in-container ~/.codex across --rm runs: OAuth refresh rotates tokens,
   so the volume's refreshed state must survive and is preferred over the
