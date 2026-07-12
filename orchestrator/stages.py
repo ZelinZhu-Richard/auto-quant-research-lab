@@ -23,12 +23,26 @@ class StageFailure(Exception):
     """Mid-cycle failure => KILLED(reason=infrastructure), loop continues (R4)."""
 
 
+# Model identity is the most consequential experimental variable, and the
+# mounted ~/.codex config is rewritten by vendor updates WITHOUT a gate
+# (observed 2026-07-10). It is therefore pinned here and passed explicitly
+# on every codex invocation (human directive 2026-07-11). Changing these
+# constants is an R5-gated change. Flag syntax verified against
+# codex-cli 0.144.1 --help and live probes on 2026-07-11.
+S2_CODEX_MODEL = "gpt-5.6-sol"
+S2_CODEX_EFFORT = "xhigh"
+S4_CODEX_MODEL = "gpt-5.6-terra"  # referee: obedience, not capability
+# NOTE: S4 reasoning effort is deliberately NOT pinned (the directive named
+# only the model); it still inherits from the mounted config — see BACKLOG.
+
+
 @dataclass
 class LlmUsage:
     claude_cost_usd: float = 0.0
     codex_tokens: int = 0
     codex_cost_known: bool = False
     calls: int = 0
+    models: dict = field(default_factory=dict)  # base stage -> set of ids
 
     def add_claude(self, cost: float | None) -> None:
         self.calls += 1
@@ -39,6 +53,14 @@ class LlmUsage:
         self.calls += 1
         if tokens:
             self.codex_tokens += int(tokens)
+
+    def record_model(self, stage: str, model: str) -> None:
+        """Per-run model audit (summary.json). 'S2-repair' folds into 'S2'."""
+        base = stage.split("-")[0]
+        self.models.setdefault(base, set()).add(model)
+
+    def models_summary(self) -> dict:
+        return {stage: sorted(ids) for stage, ids in sorted(self.models.items())}
 
 
 @dataclass
@@ -102,20 +124,34 @@ class LiveLlm:
             self.usage.add_claude(payload.get("total_cost_usd"))
         except (json.JSONDecodeError, KeyError) as exc:
             raise StageFailure(f"{stage}: unparseable claude output: {exc}") from exc
+        # model audit: claude is not pinned by flag; record what the CLI
+        # reports it actually used (modelUsage keys in the JSON payload)
+        reported = payload.get("modelUsage")
+        if isinstance(reported, dict) and reported:
+            observed = ",".join(sorted(reported))
+        else:
+            observed = str(payload.get("model", "unknown"))
+        self.usage.record_model(stage, observed)
         return _strip_fences(text)
 
-    def codex_text(self, prompt: str, stage: str, timeout_s: int) -> str:
+    def codex_text(self, prompt: str, stage: str, timeout_s: int,
+                   model: str, effort: str | None = None) -> str:
         out_file = Path(tempfile.gettempdir()) / f"codex_{stage}_{uuid.uuid4().hex}.md"
+        command = [
+            "codex", "exec",
+            "-m", model,  # pinned per stage; never from mounted config
+            "-s", "read-only",
+            "--skip-git-repo-check",
+            "-C", str(self.repo_root),
+            "--output-last-message", str(out_file),
+        ]
+        if effort is not None:
+            command += ["-c", f'model_reasoning_effort="{effort}"']
+        command.append("-")
+        self.usage.record_model(stage, model + (f" (effort={effort})" if effort else ""))
         result = run_logged(
             self.log,
-            [
-                "codex", "exec",
-                "-s", "read-only",
-                "--skip-git-repo-check",
-                "-C", str(self.repo_root),
-                "--output-last-message", str(out_file),
-                "-",
-            ],
+            command,
             cwd=self.repo_root,
             timeout_s=timeout_s,
             stage=stage,

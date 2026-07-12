@@ -36,6 +36,9 @@ from pathlib import Path
 from orchestrator import dryrun, prompts, state
 from orchestrator.cli_runner import ToolCallLog, run_logged
 from orchestrator.stages import (
+    S2_CODEX_EFFORT,
+    S2_CODEX_MODEL,
+    S4_CODEX_MODEL,
     LiveLlm,
     LlmUsage,
     StageFailure,
@@ -88,6 +91,7 @@ class Loop:
     # ---------- infrastructure ----------
 
     def _mock_log(self, stage: str, what: str) -> None:
+        self.usage.record_model(stage, "dry-run-mock")
         self.log.append({"ts": _now_iso(), "stage": stage, "command": ["MOCK", what],
                          "cwd": str(self.repo_root), "duration_s": 0.0,
                          "exit_code": 0, "timed_out": False, "mock": True})
@@ -208,7 +212,8 @@ class Loop:
         else:
             spec2 = (self.repo_root / "SPEC.md").read_text()
             source = self.llm.codex_text(
-                prompts.s2_implement(spec2, hypothesis_md), "S2", self.timeouts.s2)
+                prompts.s2_implement(spec2, hypothesis_md), "S2", self.timeouts.s2,
+                model=S2_CODEX_MODEL, effort=S2_CODEX_EFFORT)
         signal_params = validate_signal_source(source)
         if signal_params != blocks["params"]:
             # R3: results must run exactly the pre-registered iteration-0
@@ -231,6 +236,7 @@ class Loop:
                     repair_context=(tests.stdout + tests.stderr)[-3000:],
                 ),
                 "S2-repair", self.timeouts.s2,
+                model=S2_CODEX_MODEL, effort=S2_CODEX_EFFORT,
             )
             repaired_params = validate_signal_source(source)
             if repaired_params != blocks["params"]:
@@ -276,8 +282,9 @@ class Loop:
             results_text = json.dumps(results, indent=2)
             text = self.llm.codex_text(
                 prompts.s4_referee((self.repo_root / "SPEC.md").read_text(),
-                                   hypothesis_md, results_text),
-                "S4", self.timeouts.s4)
+                                   hypothesis_md, results_text,
+                                   referee_model=f"codex {S4_CODEX_MODEL}"),
+                "S4", self.timeouts.s4, model=S4_CODEX_MODEL)
             # R4: invalid referee output is a mid-cycle failure => infra-kill
             decision = validate_decision(text, blocks["grid"],
                                          results["iteration_history"])
@@ -429,6 +436,9 @@ class Loop:
             "claude_cost_usd": round(self.usage.claude_cost_usd, 4),
             "codex_tokens": self.usage.codex_tokens,
             "llm_calls": self.usage.calls,
+            # per-run model audit: S1/S5 as reported by the claude CLI,
+            # S2/S4 as pinned and passed explicitly (stages.py constants)
+            "models": self.usage.models_summary(),
             "consecutive_infra_at_halt": self.consecutive_infra,
             "finished_at": _now_iso(),
         }

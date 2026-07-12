@@ -87,7 +87,10 @@ pandas view (pandas 3.0.3):
    step instructs. Section 11 makes data/ changes human-only; I read the
    human's instruction to build the dataset as delegating the whole
    pipeline including this move. The repo now contains no holdout directory
-   (R2 verified).
+   (R2 verified). [Relocated 2026-07-11 per the human to
+   `~/dev/quantlab_holdout_DO_NOT_MOUNT` — still outside the repo tree
+   (the repo is `~/dev/auto-quant-research-lab/quantlab`), 50 files
+   verified after the move.]
 5. **Repo root is `quantlab/`** (the git repo with origin
    `ZelinZhu-Richard/auto-quant-research-lab`). `engine/`, `orchestrator/`,
    `hypotheses/` etc. are created at this root.

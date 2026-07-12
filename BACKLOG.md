@@ -15,6 +15,15 @@
   advance the window past an empty batch. Harmless here (those symbols are
   universe-ineligible by the listed-within-30-days rule) but the report
   label is misleading.
+- [2026-07-11 | model pinning] S2/S4 codex MODELS are now pinned in
+  orchestrator/stages.py (gpt-5.6-sol xhigh; gpt-5.6-terra) per the human
+  directive, but S4's REASONING EFFORT was not named in the directive and
+  is deliberately left unpinned — it still inherits from the mounted
+  ~/.codex config (currently "ultra"; live-probed OK with terra on
+  2026-07-11). Same vendor-rewrite drift class as the model identity.
+  Suggest the human name an S4 effort value to pin via an R5-gated change.
+  S1/S5 (claude) are likewise unpinned by flag; summary.json records what
+  the CLI reports it used each run.
 - [2026-07-08 | setup | A6] The egress allowlist holds exactly the two
   VERIFIED domains (api.anthropic.com; chatgpt.com for codex ChatGPT-OAuth
   mode, observed live). If an overnight run halts because codex needs a

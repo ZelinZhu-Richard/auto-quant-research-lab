@@ -88,14 +88,17 @@ Output ONLY the complete Python source of signal.py. No preamble, no fences.
 """
 
 
-def s4_referee(spec_text: str, hypothesis_md: str, results_json: str) -> str:
+def s4_referee(spec_text: str, hypothesis_md: str, results_json: str,
+               referee_model: str) -> str:
     sections = _spec_sections(spec_text, ("8", "8b", "10", "13"))
     return f"""You are the REFEREE stage (S4) of an autonomous quant research loop.
 Follow SPEC §13 exactly: parse the pre-registered blocks from hypothesis.md,
 compare against results.json (it is ground truth; DSR is precomputed in
 referee_inputs.deflated_sharpe), apply §8's decision rule MECHANICALLY, and
 output decision.json per §10. You never propose fixes or new ideas. Your
-justification must cite the pre-registered numbers.
+justification must cite the pre-registered numbers. Set the
+"referee_model" field to exactly "{referee_model}" (it is pinned by the
+orchestrator; do not self-report anything else).
 
 Output ONLY the decision.json content as valid JSON. No preamble, no fences.
 
