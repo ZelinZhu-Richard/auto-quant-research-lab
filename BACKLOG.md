@@ -30,3 +30,5 @@
   content. Claude therefore fixed and re-ran the gate once more instead of
   halting the session. If the human reads Section 8 stricter than this,
   say so and the loop's gate handler will be tightened to match.
+  [RESOLVED 2026-07-11: interpretation RATIFIED by the human; codified as
+  the canonical gate procedure in SETUP_NOTES.md.]

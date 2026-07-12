@@ -132,3 +132,36 @@ pandas view (pandas 3.0.3):
 - The "56-test suite" phrase in the Gate H session summary was a prose
   error; no repo artifact carried a wrong count (commit-message counts
   were accurate at their respective commits).
+
+## Canonical review-gate procedure (Section 8 interpretation — RATIFIED)
+
+Ratified by the human 2026-07-11, resolving the interpretation question
+logged in BACKLOG.md during A1. This is the canonical procedure for every
+Codex review gate (after build-order steps per PROJECT_BRIEF §8/§9 and any
+diff touching an R5 path).
+
+1. **Run the gate against the latest commit**, non-interactive
+   (`codex exec -s read-only`), using the §8 reviewer-only prompt template;
+   verify the CLI flags via `--help` before first use after any CLI or
+   config change. Gates are BLOCKING: no other work proceeds while a
+   review is in flight.
+2. **On FAIL where every finding is NEW and, in Claude's judgment,
+   legitimate:** fix, commit the fixes as their own commit with the
+   findings enumerated in the message (audit spine), and re-run the gate
+   against that commit. This may repeat across rounds; each round's
+   findings must be new.
+3. **Stop and await human arbitration** — write BOTH positions to
+   STATE.md, commit, halt — when either deadlock condition appears:
+   (a) the SAME finding recurs after its fix round (the fix is disputed),
+   or (b) Claude believes a finding is WRONG. Never argue past one round
+   on any single finding.
+4. **Rationale (the ratified reading):** §8's "if still FAIL: STOP, write
+   both positions, await arbitration" targets UNRESOLVED findings — a
+   Claude-vs-Codex deadlock in which two positions exist. Fresh,
+   uncontested findings on new content are resolvable, not deadlocked;
+   halting the build to arbitrate a dispute that does not exist serves
+   no one. The arbitration clause's own wording ("both positions")
+   presupposes disagreement.
+5. **Empirical record from setup** (all converged, every FAIL round
+   consisted of new legitimate findings): A1 3 rounds, A2 3, A3 7, A5 6,
+   A6 3, Gate-H amendment 2, launcher-finalize fix 3.
