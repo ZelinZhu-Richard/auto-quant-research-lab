@@ -136,6 +136,33 @@ pandas view (pandas 3.0.3):
   error; no repo artifact carried a wrong count (commit-message counts
   were accurate at their respective commits).
 
+## Container launch runbook (live runs — HUMAN-ONLY)
+
+Prereq once per shell: `export ANTHROPIC_API_KEY=sk-ant-...`
+
+Supervised mini-run (N cycles, 1h cap; the compose `lab` command is
+hard-wired for overnight, so a mini-run overrides it and must carry the
+same seed + finalize chain):
+
+    RUN_ID="minirun_$(date -u +%Y%m%d_%H%M%S)" docker compose run --rm \
+      -e RUN_ID -e ANTHROPIC_API_KEY \
+      -v "$HOME/.codex:/home/labuser/.codex-seed:ro" \
+      lab bash -c 'bash scripts/seed_codex_home.sh || exit 71; uv run python -m orchestrator.loop --mode live --run-id "$RUN_ID" --max-cycles 3 --wall-clock-hours 1; status=$?; git add runs/ STATE.md || exit 70; if ! git diff --cached --quiet -- runs/ STATE.md; then git commit -m "run $RUN_ID: toolcall log finalized" -- runs/ STATE.md || exit 70; fi; exit $status'
+
+Full overnight run (uses the compose command as committed):
+
+    RUN_ID="overnight_$(date -u +%Y%m%d)" docker compose run --rm \
+      -e RUN_ID -e ANTHROPIC_API_KEY \
+      -v "$HOME/.codex:/home/labuser/.codex-seed:ro" lab
+
+Notes: codex auth is mounted READ-ONLY at the `.codex-seed` staging path
+and copied into a writable in-container `~/.codex` by
+scripts/seed_codex_home.sh (codex hard-fails at startup on a read-only
+home — minirun_20260712_032156). Host `~/.codex` is never mounted rw.
+Exit 71 = seeding failed; exit 70 = log finalization failed. After the
+run: read git log + LEDGER before executing anything, regenerate the
+README table (`uv run python scripts/ledger_stats.py`), push.
+
 ## Canonical review-gate procedure (Section 8 interpretation — RATIFIED)
 
 Ratified by the human 2026-07-11, resolving the interpretation question

@@ -86,6 +86,30 @@ def _strip_fences(text: str) -> str:
     return match.group(1).strip() if match else text
 
 
+def _output_tail(result: CliResult, limit: int = 300) -> str:
+    """Failure excerpt = TAIL of combined stdout+stderr. Fatal errors are
+    the last thing a process says; taking the head buried
+    minirun_20260712's 'Read-only file system' fatal behind a benign
+    PATH-aliases warning."""
+    combined = ((result.stdout or "") + (result.stderr or "")).strip()
+    return combined[-limit:]
+
+
+def _claude_failure_detail(result: CliResult, limit: int = 300) -> str:
+    """claude -p reports failures as JSON on STDOUT (the `result` field);
+    stderr is typically empty — minirun_20260712's S1 kills read
+    'claude exited 1:' with nothing after the colon. Prefer the parsed
+    result text, fall back to the combined tail."""
+    try:
+        payload = json.loads(result.stdout)
+        detail = str(payload.get("result", "")).strip()
+        if detail:
+            return detail[-limit:]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return _output_tail(result, limit)
+
+
 class LiveLlm:
     """Real CLI calls. Flags were verified against `claude --help` /
     `codex --help` at setup time and are re-verified by loop preflight."""
@@ -116,10 +140,16 @@ class LiveLlm:
         if result.timed_out or result.exit_code != 0:
             raise StageFailure(
                 f"{stage}: claude exited {result.exit_code}"
-                f"{' (timeout)' if result.timed_out else ''}: {result.stderr[:300]}"
+                f"{' (timeout)' if result.timed_out else ''}: "
+                f"{_claude_failure_detail(result)}"
             )
         try:
             payload = json.loads(result.stdout)
+            if payload.get("is_error"):
+                # zero-exit error payload: must never flow into an artifact
+                raise StageFailure(
+                    f"{stage}: claude reported is_error: "
+                    f"{str(payload.get('result', ''))[-300:]}")
             text = payload["result"]
             self.usage.add_claude(payload.get("total_cost_usd"))
         except (json.JSONDecodeError, KeyError) as exc:
@@ -165,7 +195,8 @@ class LiveLlm:
         if result.timed_out or result.exit_code != 0:
             raise StageFailure(
                 f"{stage}: codex exited {result.exit_code}"
-                f"{' (timeout)' if result.timed_out else ''}: {result.stderr[:300]}"
+                f"{' (timeout)' if result.timed_out else ''}: "
+                f"{_output_tail(result)}"
             )
         if not out_file.exists():
             raise StageFailure(f"{stage}: codex produced no output file")

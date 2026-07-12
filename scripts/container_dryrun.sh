@@ -36,6 +36,9 @@ fi
 echo "ok: pypi.org unreachable"
 
 echo "=== [3/3] dry-run in-container ==="
+# uniform launcher contract (no-op here: the dryrun service mounts no
+# credential seed — the acceptance run needs none)
+bash /workspace/scripts/seed_codex_home.sh || { echo "FAIL: seed script errored"; exit 1; }
 WORK=/tmp/dryrun
 rm -rf "$WORK"
 mkdir -p "$WORK"

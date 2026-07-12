@@ -24,6 +24,9 @@ echo "--- preflight: full engine test suite ---"
 uv run pytest tests/ -q
 
 RUN_ID="shakedown_$(date -u +%Y%m%d_%H%M%S)"
+# uniform launcher contract: seed a writable ~/.codex if a read-only
+# staging mount exists (no-op on the host, where ~/.codex is writable)
+bash "$(dirname "$0")/seed_codex_home.sh"
 echo
 echo "--- one live cycle (run id: ${RUN_ID}) ---"
 echo "    S1 claude -> S2 codex+tests -> S3 engine -> S4 codex referee -> S5 memo"

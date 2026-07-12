@@ -44,3 +44,10 @@
   Suggest the human name an S4 effort value to pin via an R5-gated change.
   S1/S5 (claude) are likewise unpinned by flag; summary.json records what
   the CLI reports it used each run.
+- [2026-07-12 | egress] RESOLVED (2026-07-08 A6 entry): the human declared
+  the observation condition met — proxy log shows the auth.openai.com
+  refusal, and any multi-hour run crosses a token-refresh boundary —
+  and directed adding auth.openai.com to docker/proxy/filter (R5-gated).
+  Telemetry domains observed refused in minirun_20260712 proxy logs
+  (*.datadoghq.com, ab.chatgpt.com) stay blocked: codex demonstrably
+  proceeds without them.

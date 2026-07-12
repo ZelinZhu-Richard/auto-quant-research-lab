@@ -9,10 +9,14 @@
 # exists inside the container — data/all and data/raw hold holdout-period
 # bars and are blotted out by an empty read-only mount.
 #
-# R6: this file wires NO credentials. Injecting LLM API keys is a HUMAN
-# launch-time action at Gate H, e.g.:
-#   docker compose run --rm -e ANTHROPIC_API_KEY -e OPENAI_API_KEY lab
-# with the values exported only in the human's shell.
+# R6: this file wires NO credentials. Injecting them is a HUMAN
+# launch-time action (values exported only in the human's shell):
+#   RUN_ID=... docker compose run --rm -e RUN_ID -e ANTHROPIC_API_KEY \
+#     -v "$HOME/.codex:/home/labuser/.codex-seed:ro" lab
+# The codex auth is mounted READ-ONLY at the .codex-seed staging path;
+# scripts/seed_codex_home.sh copies it into a writable in-container
+# ~/.codex before the loop starts (codex hard-fails on a read-only home;
+# host ~/.codex is never mounted rw). Full runbook: SETUP_NOTES.md.
 
 services:
   proxy:
@@ -46,7 +50,8 @@ services:
     # (R5); a finalize failure exits 70 instead of masking as the loop
     # status; otherwise the loop's exit status is preserved.
     command: >
-      bash -c 'uv run python -m orchestrator.loop --mode live
+      bash -c 'bash scripts/seed_codex_home.sh || exit 71;
+      uv run python -m orchestrator.loop --mode live
       --run-id ${RUN_ID:-overnight}; status=$$?;
       git add runs/ STATE.md || exit 70;
       if ! git diff --cached --quiet -- runs/ STATE.md; then
