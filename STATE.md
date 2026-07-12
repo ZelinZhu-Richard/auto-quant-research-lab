@@ -1,9 +1,9 @@
 # STATE.md — overwritten at every stage transition; max 50 lines.
 
-phase: idle
-current_hypothesis: none
-stage: halted
+phase: overnight
+current_hypothesis: H005
+stage: S1
 iteration: none
-last_error: max cycles (3) reached
-consecutive_infra_kills: 3
-updated: 2026-07-12T03:17:48+00:00
+last_error: none
+consecutive_infra_kills: 0
+updated: 2026-07-12T03:21:57+00:00
