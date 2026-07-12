@@ -7,3 +7,4 @@
 #4 | unknown | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
 #5 | short_horizon_reversal | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
 #6 | vol_risk_premium_xsec | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
+#7 | xsec_amihud_illiquidity_premium | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
