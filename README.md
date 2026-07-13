@@ -234,7 +234,7 @@ mv data/holdout ~/quantlab_holdout_DO_NOT_MOUNT   # R2: physically absent
 # per-stage commits included.
 uv run pytest tests/
 uv run python -m orchestrator.loop --mode dry-run --max-cycles 2 --run-id demo
-git add runs/ STATE.md && git commit -m "run demo: toolcall log finalized" -- runs/ STATE.md
+git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md && git commit -m "run demo: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md
 
 # One real cycle, live CLIs in the foreground (requires claude + codex
 # installed and authenticated):

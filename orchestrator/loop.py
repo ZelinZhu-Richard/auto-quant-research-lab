@@ -7,7 +7,7 @@ commit: its toolcall logger records every subprocess call including its
 own git commits, so it cannot capture its own last act. Every committed
 launcher therefore runs, after this process exits:
 
-    git add runs/ STATE.md && git commit -m "run <id>: toolcall log finalized" -- runs/ STATE.md
+    git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md && git commit -m "run <id>: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md
 
 (unlogged by construction, pathspec-limited so nothing pre-staged rides
 along; SPEC §12's local commit at hard stop is satisfied at the launcher
@@ -520,7 +520,7 @@ class Loop:
         # next run's `git add -A` swept them into the wrong hypothesis's
         # first commit. The LAUNCHER (scripts/shakedown.sh, the compose
         # `lab` command) finalizes after this process exits:
-        #   git add runs/ STATE.md && git commit -m "run <id>: toolcall log finalized"
+        #   git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md && git commit -m "run <id>: toolcall log finalized"
         # That commit is unlogged by construction, so nothing escapes.
         # (SPEC §12's "commit locally" on hard stop is thereby satisfied at
         # the launcher level; STATE.md is included because the idle-state
