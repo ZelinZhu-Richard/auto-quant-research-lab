@@ -26,6 +26,7 @@ Sequences S1->S5 per PROJECT_BRIEF §4 / SPEC §14 with:
 """
 
 import argparse
+import contextlib
 import json
 import re
 import sys
@@ -349,15 +350,18 @@ class Loop:
             decision["decision"]]
         if iterations_run > 0:
             label = f"ITERATED->{label}"
+        # one line per hypothesis is an INVARIANT, not bookkeeping: the
+        # ledger line count is the N feeding the deflated Sharpe. The flag
+        # is set BEFORE the append: if the write itself dies mid-flush a
+        # partial line may exist, so failure handling must halt rather
+        # than risk a second append (fail toward halting, never toward a
+        # corrupted N).
+        self._ledger_written = True
         line = state.append_ledger(
             self.repo_root, number, name, label,
             agg.get("sharpe_annualized"), ref.get("deflated_sharpe"),
             agg.get("max_drawdown"), agg.get("hit_rate"), tests_pass,
         )
-        # one line per hypothesis is an INVARIANT, not bookkeeping: the
-        # ledger line count is the N feeding the deflated Sharpe. Any
-        # failure after this point must never append a second line.
-        self._ledger_written = True
         if decision["decision"] == "PROMOTE":
             state.append_promoted(self.repo_root, hid, name)
         self._state(hid, "done", error="")
@@ -379,10 +383,12 @@ class Loop:
                 f"date: {_now_iso()}\n\n## What broke\n\n{error[:1000]}\n\n"
                 f"(orchestrator-written memo; no merit judgment was made — R4)\n")
         (hyp_dir / "memo.md").write_text(memo)
+        # flag set BEFORE the append — same partial-write reasoning as
+        # _close_cycle: a mid-flush failure must halt, not append again
+        self._ledger_written = True
         state.append_ledger(self.repo_root, number, name,
                             "KILLED(infrastructure)", None, None, None, None,
                             tests_pass)
-        self._ledger_written = True
         self.consecutive_infra += 1
         self._state(hid, "infra-killed", error=_squeeze(error, 200))
         self._commit(f"{hid}: infra-kill — {_squeeze(error, 60)}")
@@ -390,14 +396,29 @@ class Loop:
 
     def _handle_cycle_failure(self, number: int, hid: str, name: str,
                               error: str, tests_pass: bool) -> None:
-        """R4 kill-and-continue — UNLESS this hypothesis's ledger line was
-        already appended: then a second append would corrupt the N feeding
-        the deflated Sharpe, so the run halts loudly instead."""
+        """R4 kill-and-continue — UNLESS this hypothesis's ledger line may
+        already exist: then a second append would corrupt the N feeding
+        the deflated Sharpe, so the run halts loudly instead. Before
+        halting, salvage-commit best-effort so a dirty LEDGER.md cannot be
+        swept into the next run's first commit (the launcher finalize also
+        stages LEDGER.md/PROMOTED_QUEUE.md as the backstop)."""
         if self._ledger_written:
+            with contextlib.suppress(Exception):
+                self._commit(f"{hid}: ledger salvage — post-append failure")
             raise HardStop(
                 f"post-ledger failure for {hid}: {error[:200]} — halting to "
                 "protect the one-line-per-hypothesis invariant")
-        self._infra_kill(number, hid, name, error, tests_pass)
+        try:
+            self._infra_kill(number, hid, name, error, tests_pass)
+        except HardStop:
+            raise
+        except Exception as exc:  # noqa: BLE001 — the handler itself died
+            with contextlib.suppress(Exception):
+                self._commit(f"{hid}: ledger salvage — infra-kill handler failed")
+            raise HardStop(
+                f"infra-kill handler itself failed for {hid}: "
+                f"{type(exc).__name__}: {exc} (original error: {error[:150]})"
+            ) from exc
 
     def run_cycle(self) -> None:
         number = state.next_hypothesis_number(self.repo_root)

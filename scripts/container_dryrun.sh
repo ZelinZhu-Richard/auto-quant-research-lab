@@ -58,9 +58,9 @@ STATUS=$?
 # STATE.md here, pathspec-limited, after the logger has exited.
 # Fail-closed: every git step's exit code is checked — a git failure must
 # never be mistaken for a clean tree.
-git add runs/ STATE.md || { echo "FAIL: finalize git add failed"; exit 1; }
-if ! git diff --cached --quiet -- runs/ STATE.md; then
-    git commit -qm "run container_dryrun: toolcall log finalized" -- runs/ STATE.md \
+git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md || { echo "FAIL: finalize git add failed"; exit 1; }
+if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md; then
+    git commit -qm "run container_dryrun: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md \
         || { echo "FAIL: finalize commit failed"; exit 1; }
 fi
 

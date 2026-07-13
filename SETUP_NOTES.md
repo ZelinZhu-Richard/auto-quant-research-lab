@@ -156,7 +156,7 @@ same seed + finalize chain):
       -e RUN_ID -e ANTHROPIC_API_KEY \
       -v quantlab_codex_home:/home/labuser/.codex \
       -v "$HOME/.codex/auth.json:/home/labuser/.codex-seed/auth.json:ro" \
-      lab bash -c 'bash scripts/seed_codex_home.sh || exit 71; uv run python -m orchestrator.loop --mode live --run-id "$RUN_ID" --max-cycles 3 --wall-clock-hours 1; status=$?; git add runs/ STATE.md || exit 70; if ! git diff --cached --quiet -- runs/ STATE.md; then git commit -m "run $RUN_ID: toolcall log finalized" -- runs/ STATE.md || exit 70; fi; exit $status'
+      lab bash -c 'bash scripts/seed_codex_home.sh || exit 71; uv run python -m orchestrator.loop --mode live --run-id "$RUN_ID" --max-cycles 3 --wall-clock-hours 1; status=$?; git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md || exit 70; if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md; then git commit -m "run $RUN_ID: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md || exit 70; fi; exit $status'
 
 Full overnight run (uses the compose command as committed):
 
