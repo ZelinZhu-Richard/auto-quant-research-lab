@@ -1,39 +1,47 @@
 # STATE.md — overwritten at every stage transition; max 50 lines.
 
-phase: HALTED — awaiting human arbitration (canonical gate procedure,
-       self-identified recurrence)
+phase: GATE QUEUED — awaiting Codex quota (external exhaustion); batch
+       ready, locally verified.
 current_hypothesis: none
 stage: none
-last_error: gate round 5 on commit c92b2d9 FAILed; finding 2 = I called
-            this a recurrence in my own commit message and fixed it
-            anyway instead of halting
-updated: 2026-07-13T00:10:00Z
+last_error: none
+updated: 2026-08-17T18:40:00Z
 
-## Codex position (round-5 review of c92b2d9)
-Finding 2: commit c92b2d9's own message reads "Same recurring finding"
-(round-3 dirty-ledger/audit-spine issue resurfacing in a third location).
-The ratified procedure requires halting for arbitration on a recurring
-finding, not another ad hoc fix — c92b2d9 should not have been created.
-Finding 1 (new): orchestrator/loop.py:523's docstring example still shows
-`git commit -m "..."` with NO trailing `--` pathspec, so a literal copy
-would commit whatever else happens to be staged — contradicting the
-pathspec-limited (R5) claims made in the surrounding comment and in prior
-commit messages.
+## Round-5 arbitration: CLOSED (human ruling 2026-08-17)
+- Finding 1 applied (9e0edd5): run() docstring finalize example is now
+  pathspec-limited, matching every committed launcher.
+- Finding 2: c92b2d9 ratified retroactively; structural corrective =
+  findings trailer on every gate-fix commit (SETUP_NOTES.md gate
+  procedure item 6); violation-and-catch recorded in BACKLOG.md as a
+  specimen.
 
-## Claude position
-Finding 2 is CONCEDED, and the concession is against myself: I correctly
-recognized the recurrence in my own words but did not apply my own rule.
-That inconsistency, not the underlying fix, is what must stop here — the
-whole point of the halt clause is a human checkpoint at recurrence,
-regardless of whether I privately agree with the finding. Finding 1 is a
-separate, narrow, uncontested bug (a genuinely missing pathspec suffix on
-one example line) I would normally just fix, but per the halt I am not
-applying it without authorization — bundling it into "one more fix" is
-exactly the pattern that produced the finding-2 violation.
+## Batch awaiting gate (touches orchestrator/ + docs => R5)
+- 9e0edd5 round-5 resolution (pathspec fix, trailer rule, specimen)
+- 03a08ac quota exhaustion RUN-HALTING: quota-shaped CLI failures
+  (429 / "usage limit" / "quota" / rate-limit in the error tail, either
+  CLI) become QuotaExhausted => QuotaHalt — distinct in STATE.md
+  ("halted (quota-exhausted)") and summary.json (halt_class) — never an
+  R4 infra-kill. Runbook gains a human pre-run quota check (worst case
+  = max hypotheses x observed per-cycle usage).
 
-## Awaiting from the human
-Authorization to: (a) fix finding 1 (add `-- runs/ STATE.md LEDGER.md
-PROMOTED_QUEUE.md` to the commit example at loop.py:523), (b) treat that
-as the close of this arbitration round (no further self-directed "round
-6" without another checkpoint if anything recurs again), (c) proceed to
-gate + push. 17 commits held unpushed (c645bc7 forward).
+## Local verification 2026-08-17 (zero quota spent)
+- tests: 98 passed (was 79; +19 quota-halt suite)
+- host dry-run: 2 mocked cycles clean, launcher finalize, tree clean,
+  summary.json carries halt_class
+- in-container dry-run: A6 acceptance 3/3 (ro mounts + R2 allowlist,
+  no pypi egress, 2 cycles clean) — seeded home + rebuilt proxy OK
+
+## Blocked on
+Codex quota — exhausted EXTERNALLY by a different project sharing the
+same ChatGPT plan, NOT by this lab. Blocks the R5 gate and live S2/S4
+only; code, local tests, dry-runs unaffected. When quota returns, run
+the canonical gate (SETUP_NOTES.md) against the batch:
+  codex exec -s read-only --skip-git-repo-check "Read PROJECT_BRIEF.md
+  sections 1, 3, 4. Review the diff introduced by commits
+  c92b2d9..HEAD against the round-5 arbitration ruling (see BACKLOG.md
+  2026-08-17 entries) and the quota-halt directive. Your role:
+  reviewer only. Flag violations of the non-negotiable rules,
+  correctness bugs, and lookahead risks. Do NOT propose alternative
+  architectures. Output: PASS or FAIL with a numbered findings list."
+21 commits unpushed (c645bc7 forward); pushes held for gate PASS per
+standing sequencing.
