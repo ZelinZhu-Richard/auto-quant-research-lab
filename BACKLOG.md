@@ -59,3 +59,15 @@
   OK. Became necessary once auth-only seeding removed the config-
   inherited value. S1/S5 (claude) remain unpinned by flag; summary.json
   records observed identity per run.
+- [2026-08-17 | gate procedure | specimen] Round-5 arbitration closed by
+  human ruling. c92b2d9 — a fix for a self-identified recurrence, created
+  instead of halting — is ratified retroactively (the fix stands on its
+  merits; reverting would be ceremony), but the procedural violation gets
+  a structural corrective, not just a concession: every gate-fix commit
+  now ends with a findings trailer (`findings: ...` plus exactly one of
+  `recurrence: none` / `recurrence: <finding> — HALTING`), codified as
+  item 6 of the canonical gate procedure in SETUP_NOTES.md. Recorded
+  here as a specimen: procedural compliance decayed across rounds —
+  c92b2d9's own commit message NAMED the recurrence and fixed it
+  anyway — and the reviewer layer caught it. Second-layer design working
+  as intended.

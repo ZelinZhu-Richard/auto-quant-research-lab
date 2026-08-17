@@ -214,4 +214,15 @@ diff touching an R5 path).
    presupposes disagreement.
 5. **Empirical record from setup** (all converged, every FAIL round
    consisted of new legitimate findings): A1 3 rounds, A2 3, A3 7, A5 6,
-   A6 3, Gate-H amendment 2, launcher-finalize fix 3.
+   A6 3, Gate-H amendment 2, launcher-finalize fix 3. Post-minirun
+   hardening batch: 5 rounds, two arbitration halts (round 2, round 5).
+6. **Findings trailer (round-5 arbitration corrective, ruled
+   2026-08-17):** every gate-fix commit message ends with a trailer
+   block declaring which findings it addresses and exactly one of
+   `recurrence: none` or `recurrence: <finding> — HALTING` (standard
+   git trailers such as Co-Authored-By precede it). This converts
+   halt-on-recurrence from a memory-dependent rule into an
+   artifact-checked one: the author must decide the recurrence question
+   at commit time, and any reviewer can check the declaration against
+   the round history. A gate-fix commit missing the trailer, or one
+   declaring a recurrence without halting, is itself a finding.
