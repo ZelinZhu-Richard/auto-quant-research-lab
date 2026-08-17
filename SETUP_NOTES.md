@@ -140,6 +140,18 @@ pandas view (pandas 3.0.3):
 
 Prereq once per shell: `export ANTHROPIC_API_KEY=sk-ant-...`
 
+Pre-run quota check (HUMAN, before every live run — added 2026-08-17):
+verify remaining Codex quota covers the run's WORST CASE — max
+hypotheses × the observed per-cycle codex usage (per-cycle tokens are
+in the last live run's summary.json and toolcalls.jsonl) — and do NOT
+launch into a quota window shared with other heavy workloads. The
+ChatGPT plan's pool is shared across unrelated projects (the 2026-08-17
+exhaustion was caused by a different project, not this lab), so an
+external drain can land mid-run regardless of in-loop budgeting. If it
+does, the orchestrator halts distinctly rather than burning cycles:
+stage `halted (quota-exhausted)` in STATE.md, `halt_class:
+"quota-exhausted"` in summary.json.
+
 Step 0 — ALWAYS rebuild BOTH images and redeploy the proxy first. The
 proxy is a persistent container (`docker compose run lab` reuses a
 running sidecar, so a filter change is not live until it is recreated),

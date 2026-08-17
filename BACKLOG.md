@@ -71,3 +71,16 @@
   c92b2d9's own commit message NAMED the recurrence and fixed it
   anyway — and the reviewer layer caught it. Second-layer design working
   as intended.
+- [2026-08-17 | quota] Codex quota exhaustion observed — caused by a
+  DIFFERENT project sharing the same ChatGPT plan, NOT by this lab's
+  usage. It blocks the R5 gate review and live S2/S4 calls only; code,
+  local tests, and mocked dry-runs are unaffected. Consequences shipped
+  in this batch (human directive): quota-shaped CLI failures (429 /
+  "usage limit" / "quota" / rate-limit phrasing in the error tail, from
+  either CLI) are now RUN-HALTING — QuotaHalt, distinct in STATE.md and
+  summary.json — rather than per-hypothesis infra-kills, because the
+  shared pool means exhaustion can arrive mid-run from outside this
+  system and kill-and-continue would burn every remaining cycle as
+  identical kills. The launch runbook gains a human pre-run quota check
+  (worst case = max hypotheses × observed per-cycle usage; never launch
+  into a window shared with other heavy workloads).

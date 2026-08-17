@@ -14,6 +14,7 @@ import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NoReturn
 
 from orchestrator import prompts
 from orchestrator.cli_runner import CliResult, ToolCallLog, run_logged
@@ -21,6 +22,37 @@ from orchestrator.cli_runner import CliResult, ToolCallLog, run_logged
 
 class StageFailure(Exception):
     """Mid-cycle failure => KILLED(reason=infrastructure), loop continues (R4)."""
+
+
+class QuotaExhausted(Exception):
+    """Quota/rate-limit exhaustion reported by either CLI — RUN-HALTING,
+    never an R4 infra-kill (the loop converts it to QuotaHalt)."""
+
+
+# Quota-shaped failure text from either CLI: HTTP 429, "usage limit",
+# "quota", rate-limit phrasing. The 429 match refuses digit/dot
+# neighbours so metric fragments like "0.429" or token counts like
+# "1429" in an error tail cannot trip it.
+QUOTA_ERROR_RE = re.compile(
+    r"(?i)(?<![\d.])429(?![\d.])"
+    r"|usage[ _-]?limit"
+    r"|quota"
+    r"|rate[ _-]?limit"
+)
+
+
+def _raise_cli_failure(message: str) -> NoReturn:
+    """Single exit for failed CLI calls: quota-shaped text halts the RUN
+    (QuotaExhausted), anything else is an R4 infra-kill (StageFailure).
+    Rationale for the split: the quota pool is SHARED with unrelated
+    workloads on the same accounts, so exhaustion can arrive mid-run from
+    OUTSIDE this system regardless of in-loop budgeting — kill-and-
+    continue exists for one broken hypothesis, not a dead upstream, and
+    without the halt an external drain burns every remaining cycle as
+    identical kills."""
+    if QUOTA_ERROR_RE.search(message):
+        raise QuotaExhausted(message)
+    raise StageFailure(message)
 
 
 # Model identity is the most consequential experimental variable, and the
@@ -158,18 +190,18 @@ class LiveLlm:
         self.usage.add_claude(payload.get("total_cost_usd") if payload else None)
 
         if result.timed_out or result.exit_code != 0:
-            raise StageFailure(
+            _raise_cli_failure(
                 f"{stage}: claude exited {result.exit_code}"
                 f"{' (timeout)' if result.timed_out else ''}: "
                 f"{_claude_failure_detail(result)}"
             )
         if payload is None:
-            raise StageFailure(
+            _raise_cli_failure(
                 f"{stage}: claude stdout is not a JSON object: "
                 f"{_output_tail(result)}")
         if payload.get("is_error"):
             # zero-exit error payload: must never flow into an artifact
-            raise StageFailure(
+            _raise_cli_failure(
                 f"{stage}: claude reported is_error: "
                 f"{str(payload.get('result', ''))[-300:]}")
         if "result" not in payload:
@@ -214,7 +246,7 @@ class LiveLlm:
             tokens = int(match.group(1).replace(",", ""))
         self.usage.add_codex(tokens)
         if result.timed_out or result.exit_code != 0:
-            raise StageFailure(
+            _raise_cli_failure(
                 f"{stage}: codex exited {result.exit_code}"
                 f"{' (timeout)' if result.timed_out else ''}: "
                 f"{_output_tail(result)}"

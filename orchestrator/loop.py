@@ -43,6 +43,7 @@ from orchestrator.stages import (
     S4_CODEX_MODEL,
     LiveLlm,
     LlmUsage,
+    QuotaExhausted,
     StageFailure,
     StageTimeouts,
     patch_params_line,
@@ -63,6 +64,13 @@ PROTECTED_FILES = ("Dockerfile", "pyproject.toml", "uv.lock", "SPEC.md",
 
 class HardStop(Exception):
     """Clean halt: write diagnosis to STATE.md, commit, exit 0."""
+
+
+class QuotaHalt(HardStop):
+    """Quota/rate-limit exhaustion halt — kept distinct from ordinary hard
+    stops (stage "halted (quota-exhausted)" in STATE.md, halt_class
+    "quota-exhausted" in summary.json) so the morning review can tell a
+    dead upstream from a run that finished its work."""
 
 
 def _now_iso() -> str:
@@ -471,6 +479,17 @@ class Loop:
             self._close_cycle(number, hid, name, decision, results, tests_pass,
                               iterations_run)
             self.consecutive_infra = 0
+        except QuotaExhausted as exc:
+            # Quota/rate-limit exhaustion is RUN-HALTING, never an R4
+            # infra-kill: the quota pool is SHARED with unrelated
+            # workloads, so exhaustion can arrive mid-run from outside
+            # this system regardless of in-loop budgeting — kill-and-
+            # continue is for one broken hypothesis, not a dead upstream.
+            # Without the halt, an external drain burns every remaining
+            # cycle as identical kills. All LLM calls precede this
+            # cycle's ledger append, so no ledger line exists for this
+            # hid; like any hard stop, the id is reused by the next run.
+            raise QuotaHalt(f"QUOTA EXHAUSTED at {hid}: {exc}") from exc
         except StageFailure as exc:
             self._handle_cycle_failure(number, hid, name, str(exc), tests_pass)
         except HardStop:
@@ -491,15 +510,19 @@ class Loop:
         self.preflight()
         self._state("none", "starting")
         halt_reason = "completed"
+        halt_class = "completed"
         try:
             while True:
                 self._check_hard_stops()
                 self.run_cycle()
         except HardStop as stop:
             halt_reason = str(stop)
+            halt_class = ("quota-exhausted" if isinstance(stop, QuotaHalt)
+                          else "hard-stop")
         summary = {
             "run_id": self.run_id, "mode": self.mode,
             "cycles": self.cycles_done, "halt_reason": halt_reason,
+            "halt_class": halt_class,
             "claude_cost_usd": round(self.usage.claude_cost_usd, 4),
             "codex_tokens": self.usage.codex_tokens,
             "llm_calls": self.usage.calls,
@@ -510,8 +533,10 @@ class Loop:
             "finished_at": _now_iso(),
         }
         (self.run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
-        state.write_state(self.repo_root, "idle", "none", "halted", None,
-                          halt_reason[:200], self.consecutive_infra)
+        state.write_state(self.repo_root, "idle", "none",
+                          "halted (quota-exhausted)"
+                          if halt_class == "quota-exhausted" else "halted",
+                          None, halt_reason[:200], self.consecutive_infra)
         # NO run-end commit here — deliberately. The toolcall logger records
         # every subprocess call including the orchestrator's own git
         # commits, so a commit made here would be described by log lines
