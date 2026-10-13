@@ -134,67 +134,11 @@ def compute_signal(panel: pd.DataFrame) -> pd.Series:
 
 def mechanical_referee(hypothesis_blocks: dict, results: dict,
                        dsr_threshold: float = 0.95) -> dict:
-    """SPEC §8 decision rule, implemented mechanically — the dry-run stand-in
-    for the codex referee AND the reference implementation for SPEC §13's
-    acceptance test ('a different model reaches the same decision')."""
-    criteria = hypothesis_blocks["criteria"]
-    grid = hypothesis_blocks["grid"]
-    agg = results["aggregate"]
-    folds = results["folds"]
-    dsr = results["referee_inputs"]["deflated_sharpe"]
-    iteration = results["iteration"]
-    history = results["iteration_history"]
-
-    agg_positive = agg["sharpe_annualized"] > 0
-    consistent = sum(
-        1 for f in folds if (f["sharpe_annualized"] > 0) == agg_positive
-    )
-    checks = [
-        {"name": "min_sharpe", "required": f">= {criteria['min_sharpe']}",
-         "observed": agg["sharpe_annualized"],
-         "pass": agg["sharpe_annualized"] >= criteria["min_sharpe"]},
-        {"name": "max_drawdown", "required": f"<= {criteria['max_drawdown']}",
-         "observed": agg["max_drawdown"],
-         "pass": agg["max_drawdown"] <= criteria["max_drawdown"]},
-        {"name": "min_hit_rate", "required": f">= {criteria['min_hit_rate']}",
-         "observed": agg["hit_rate"],
-         "pass": agg["hit_rate"] >= criteria["min_hit_rate"]},
-        {"name": "stability",
-         "required": f">= {criteria['min_sign_consistent_folds']}/4 folds sign-consistent",
-         "observed": f"{consistent}/4",
-         "pass": consistent >= criteria["min_sign_consistent_folds"]},
-        {"name": "deflated_sharpe", "required": f">= {dsr_threshold}",
-         "observed": dsr, "pass": dsr >= dsr_threshold},
-    ]
-
-    tried = [h["params"] for h in history]
-    untried = [g for g in grid if g not in tried]
-
-    if all(c["pass"] for c in checks):
-        decision, iterate_params = "PROMOTE", None
-        just = "All pre-registered criteria pass and DSR clears the SPEC threshold."
-    elif iteration >= 2 or not untried:
-        decision, iterate_params = "KILL", None
-        failed = ", ".join(f"{c['name']}={c['observed']} (need {c['required']})"
-                           for c in checks if not c["pass"])
-        just = f"Failed pre-registered criteria: {failed}. Grid exhausted or iteration cap reached."
-    else:
-        decision, iterate_params = "ITERATE", untried[0]
-        failed = ", ".join(f"{c['name']}={c['observed']} (need {c['required']})"
-                           for c in checks if not c["pass"])
-        just = f"Failed: {failed}. First untried pre-registered grid point: {untried[0]}."
-
-    return {
-        "hypothesis_id": results["hypothesis_id"],
-        "iteration": iteration,
-        "decision": decision,
-        "kill_reason": "merits" if decision == "KILL" else None,
-        "criteria": checks,
-        "iterate_params": iterate_params,
-        "justification": just,
-        "referee_model": "dry-run-mechanical-referee",
-        "timestamp": results["generated_at"],
-    }
+    """Compatibility helper; the shared validated rule remains authoritative."""
+    from orchestrator.rule import DSR_THRESHOLD, decide
+    if dsr_threshold != DSR_THRESHOLD:
+        raise ValueError("SPEC DSR threshold is fixed")
+    return decide(hypothesis_blocks, results, referee_model="dry-run-mechanical-referee")
 
 
 def canned_memo(hypothesis_md: str, results: dict, decision: dict) -> str:

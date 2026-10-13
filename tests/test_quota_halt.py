@@ -11,6 +11,7 @@ from unittest import mock
 
 import pytest
 
+from engine.workspace import writer_lock
 from orchestrator.cli_runner import CliResult
 from orchestrator.loop import HardStop, Loop, QuotaHalt
 from orchestrator.stages import (
@@ -35,6 +36,7 @@ def _llm() -> tuple[LiveLlm, LlmUsage]:
 
 
 def _bare_loop(tmp_path) -> Loop:
+    (tmp_path / "WORKSPACE.json").write_text('{"kind":"fixture"}')
     return Loop(repo_root=tmp_path, mode="dry-run", run_id="t",
                 max_hypotheses=1, wall_clock_hours=1.0,
                 cost_ceiling_usd=1.0, max_cycles=1)
@@ -113,7 +115,7 @@ def test_non_quota_cli_failure_still_stage_failure():
 
 def test_run_cycle_converts_quota_exhausted_to_quota_halt(tmp_path):
     loop = _bare_loop(tmp_path)
-    with mock.patch.object(
+    with writer_lock(tmp_path), mock.patch.object(loop, "_commit"), mock.patch.object(
             loop, "_s1_hypothesize",
             side_effect=QuotaExhausted("S1: claude exited 1: usage limit")), \
          mock.patch.object(loop, "_infra_kill") as infra:

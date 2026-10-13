@@ -10,6 +10,7 @@ grid point is patched into signal.py's single PARAMS line mechanically.
 import ast
 import json
 import re
+import sys
 import tempfile
 import uuid
 from dataclasses import dataclass, field
@@ -79,6 +80,10 @@ class LlmUsage:
     codex_tokens: int = 0
     codex_cost_known: bool = False
     calls: int = 0
+    codex_calls_total: int = 0
+    codex_calls_reported: int = 0
+    codex_call_tokens: list = field(default_factory=list)
+    referee_unavailable: int = 0
     models: dict = field(default_factory=dict)  # base stage -> set of ids
 
     def add_claude(self, cost: float | None) -> None:
@@ -88,8 +93,23 @@ class LlmUsage:
 
     def add_codex(self, tokens: int | None) -> None:
         self.calls += 1
-        if tokens:
+        self.codex_calls_total += 1
+        self.codex_call_tokens.append(tokens)
+        if tokens is not None:
+            self.codex_calls_reported += 1
             self.codex_tokens += int(tokens)
+
+    def codex_tokens_reported(self) -> int | None:
+        """A complete total is unknown if even one invocation lacks usage."""
+        return self.codex_tokens if self.codex_calls_total == self.codex_calls_reported else None
+
+    def usage_summary(self) -> dict:
+        return {"codex_tokens": self.codex_tokens_reported(),
+                "codex_tokens_observed": self.codex_tokens,
+                "codex_calls_reported": self.codex_calls_reported,
+                "codex_calls_total": self.codex_calls_total,
+                "codex_usage_complete": self.codex_calls_total == self.codex_calls_reported,
+                "codex_call_tokens": self.codex_call_tokens}
 
     def record_model(self, stage: str, model: str) -> None:
         """Per-run model audit (summary.json). 'S2-repair' folds into 'S2'."""
@@ -107,6 +127,11 @@ class StageTimeouts:
     s3: int = 900
     s4: int = 600
     s5: int = 600
+
+
+def parse_codex_usage(stdout: str, stderr: str) -> int | None:
+    match = re.search(r"tokens used[\s:]*([\d,]+)", stdout + "\n" + stderr, re.I)
+    return int(match.group(1).replace(",", "")) if match else None
 
 
 FORBIDDEN_IMPORT_RE = re.compile(
@@ -232,19 +257,24 @@ class LiveLlm:
             command += ["-c", f'model_reasoning_effort="{effort}"']
         command.append("-")
         self.usage.record_model(stage, model + (f" (effort={effort})" if effort else ""))
-        result = run_logged(
-            self.log,
-            command,
-            cwd=self.repo_root,
-            timeout_s=timeout_s,
-            stage=stage,
-            stdin_text=prompt,
-        )
-        tokens = None
-        match = re.search(r"tokens used[\s:]*([\d,]+)", result.stdout, re.I)
-        if match:
-            tokens = int(match.group(1).replace(",", ""))
+        try:
+            result = run_logged(
+                self.log,
+                command,
+                cwd=self.repo_root,
+                timeout_s=timeout_s,
+                stage=stage,
+                stdin_text=prompt,
+            )
+        except Exception:
+            # A spawned CLI may have consumed usage before decoding/logging failed.
+            self.usage.add_codex(None)
+            self.log.append({"stage": stage, "usage": {"codex_tokens": None},
+                             "usage_status": "unavailable-after-call-error"})
+            raise
+        tokens = parse_codex_usage(result.stdout, result.stderr)
         self.usage.add_codex(tokens)
+        self.log.append({"stage": stage, "usage": {"codex_tokens": tokens}})
         if result.timed_out or result.exit_code != 0:
             _raise_cli_failure(
                 f"{stage}: codex exited {result.exit_code}"
@@ -380,7 +410,7 @@ def run_hypothesis_tests(log: ToolCallLog, repo_root: Path, hypothesis_id: str,
     return run_logged(
         log,
         ["env", f"QUANTLAB_HYPOTHESIS={hypothesis_id}",
-         "uv", "run", "pytest", "tests/hypothesis_harness.py", "-q",
+         sys.executable, "-m", "pytest", "tests/hypothesis_harness.py", "-q",
          "--no-header", "-x"],
         cwd=repo_root,
         timeout_s=timeout_s,
@@ -389,11 +419,14 @@ def run_hypothesis_tests(log: ToolCallLog, repo_root: Path, hypothesis_id: str,
 
 
 def run_backtest(log: ToolCallLog, repo_root: Path, hypothesis_id: str,
-                 timeout_s: int) -> CliResult:
+                 timeout_s: int, *, evaluation_id: str, record_kind: str,
+                 writer_token: str) -> CliResult:
     return run_logged(
         log,
-        ["uv", "run", "python", "-m", "engine.run_backtest",
-         "--hypothesis", hypothesis_id, "--repo-root", str(repo_root)],
+        [sys.executable, "-m", "engine.run_backtest",
+         "--hypothesis", hypothesis_id, "--repo-root", str(repo_root),
+         "--evaluation-id", evaluation_id, "--record-kind", record_kind,
+         "--writer-token", writer_token],
         cwd=repo_root,
         timeout_s=timeout_s,
         stage="S3-backtest",

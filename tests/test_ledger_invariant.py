@@ -7,6 +7,15 @@ from unittest import mock
 import pytest
 
 from orchestrator.loop import HardStop, Loop
+from engine.workspace import writer_lock
+from tests.v11_support import BLOCKS, init_workspace, start_hypothesis, completed
+
+
+@pytest.fixture(autouse=True)
+def owned_workspace(tmp_path):
+    init_workspace(tmp_path)
+    with writer_lock(tmp_path):
+        yield
 
 
 def _bare_loop(tmp_path) -> Loop:
@@ -38,8 +47,10 @@ def test_flag_set_before_append_in_close_cycle(tmp_path):
     instead of appending a second line."""
     loop = _bare_loop(tmp_path)
     loop._ledger_written = False
-    decision = {"decision": "KILL", "kill_reason": "merits"}
-    results = {"aggregate": {}, "referee_inputs": {}}
+    hid = start_hypothesis(tmp_path)
+    _, results = completed(tmp_path, hid, passing=True)
+    with mock.patch.object(loop, "_commit"):
+        decision = loop._s4_referee(hid, "card", BLOCKS, results, canned=True)
     with mock.patch("orchestrator.loop.state.append_ledger",
                     side_effect=OSError("disk full")):
         with pytest.raises(OSError):

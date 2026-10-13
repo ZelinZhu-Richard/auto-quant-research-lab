@@ -97,6 +97,7 @@ def test_mechanical_referee_passes_strict_validator():
         dryrun.render(dryrun.CANNED[0]["hypothesis_md"], hid="H999", ts="t"))
     results = {
         "hypothesis_id": "H999", "iteration": 0, "generated_at": "t",
+        "status": "ok", "params": blocks["params"],
         "iteration_history": [{"iteration": 0, "params": blocks["params"]}],
         "aggregate": {"sharpe_annualized": -1.0, "max_drawdown": 0.5,
                       "hit_rate": 0.4},
