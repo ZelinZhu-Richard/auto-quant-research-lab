@@ -1,0 +1,141 @@
+{
+  "binding_status": "legacy-unverifiable-at-launch",
+  "corrected_bookkeeping": {
+    "deflated_sharpe": 0.01073639878348931,
+    "import_evaluation_ids": [
+      "E0001"
+    ],
+    "label": "counterfactual corrected bookkeeping, not historical decision inputs",
+    "n_trials": 1,
+    "sr0": 0.0,
+    "trial_sharpes_daily": [
+      -0.07314299849486205
+    ],
+    "variance": 0.0
+  },
+  "evaluation_id": "E0001",
+  "hypothesis_id": "H001",
+  "identity_origin": "assigned-at-legacy-import",
+  "iteration": 0,
+  "metrics": {
+    "deflated_sharpe": 0.01073639878348931,
+    "end": "2025-06-30",
+    "hit_rate": 0.4830421377183967,
+    "kurtosis_raw": 7.432463161421103,
+    "max_drawdown": 0.6032419110208322,
+    "mean_daily_return": -0.0007551634638977341,
+    "n_days": 973,
+    "n_position_days": 973,
+    "n_trials": 1,
+    "sharpe_annualized": -1.397395024149964,
+    "sharpe_daily": -0.07314299849486205,
+    "skew": -0.34489479029144765,
+    "start": "2022-11-01",
+    "std_daily_return": 0.010324480530433555,
+    "trial_sharpes_daily": [
+      -0.07314299849486205
+    ],
+    "turnover_annualized": 74.23792394655706
+  },
+  "original_evaluation_id": null,
+  "params": {
+    "lookback_days": 90,
+    "skip_days": 7
+  },
+  "provenance": {
+    "log_line": 12,
+    "log_path": "runs/shakedown_20260711_165247/toolcalls.jsonl"
+  },
+  "record_kind": "research",
+  "reserved_at": "2026-10-13T04:01:17.264383+00:00",
+  "result_sha256": "381f20aabb5fd75db18b2a70140d7149027c85b7d4765631d26fe1bc9be152d8",
+  "results": {
+    "aggregate": {
+      "end": "2025-06-30",
+      "hit_rate": 0.4830421377183967,
+      "kurtosis_raw": 7.432463161421103,
+      "max_drawdown": 0.6032419110208322,
+      "mean_daily_return": -0.0007551634638977341,
+      "n_days": 973,
+      "n_position_days": 973,
+      "sharpe_annualized": -1.397395024149964,
+      "sharpe_daily": -0.07314299849486205,
+      "skew": -0.34489479029144765,
+      "start": "2022-11-01",
+      "std_daily_return": 0.010324480530433555,
+      "turnover_annualized": 74.23792394655706
+    },
+    "cost_bps_per_side": 25,
+    "engine": {
+      "data_manifest_sha256": "885599371d82fa70ed4f1faf4b9fba6d8857aca4cbb53b7ccebc7a1ad90b1a3b",
+      "git_commit": "710e8b044f72dbef95888c79ecf27b36415a2ab7"
+    },
+    "folds": [
+      {
+        "end": "2023-06-30",
+        "fold": 1,
+        "hit_rate": 0.49173553719008267,
+        "max_drawdown": 0.23215194241130888,
+        "n_days": 242,
+        "sharpe_annualized": -0.8465694993167526,
+        "start": "2022-11-01"
+      },
+      {
+        "end": "2024-02-29",
+        "fold": 2,
+        "hit_rate": 0.5409836065573771,
+        "max_drawdown": 0.10439013185056889,
+        "n_days": 244,
+        "sharpe_annualized": 1.020540734280648,
+        "start": "2023-07-01"
+      },
+      {
+        "end": "2024-10-31",
+        "fold": 3,
+        "hit_rate": 0.42857142857142855,
+        "max_drawdown": 0.3174152842717749,
+        "n_days": 245,
+        "sharpe_annualized": -2.7722550085443123,
+        "start": "2024-03-01"
+      },
+      {
+        "end": "2025-06-30",
+        "fold": 4,
+        "hit_rate": 0.47107438016528924,
+        "max_drawdown": 0.3777349174364274,
+        "n_days": 242,
+        "sharpe_annualized": -2.604197864475414,
+        "start": "2024-11-01"
+      }
+    ],
+    "generated_at": "2026-07-11T16:53:43.979009+00:00",
+    "hypothesis_id": "H001",
+    "iteration": 0,
+    "iteration_history": [
+      {
+        "iteration": 0,
+        "params": {
+          "lookback_days": 90,
+          "skip_days": 7
+        }
+      }
+    ],
+    "params": {
+      "lookback_days": 90,
+      "skip_days": 7
+    },
+    "referee_inputs": {
+      "deflated_sharpe": 0.01073639878348931,
+      "n_trials": 1,
+      "trial_sharpes_daily": [
+        -0.07314299849486205
+      ]
+    },
+    "status": "ok"
+  },
+  "run_id": "shakedown_20260711_165247",
+  "source": "backfill",
+  "source_commit": "7528fb96257b3f84056563a966e1a959c5191e16",
+  "source_revision": "059e0952a367f5e0b4ded60cafd7fd027fa835c5",
+  "status": "completed-legacy"
+}

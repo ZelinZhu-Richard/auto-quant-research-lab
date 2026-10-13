@@ -21,7 +21,7 @@ SAMPLE = """# LEDGER.md — header
 def test_parse_counts():
     stats = ledger_stats.parse_ledger(SAMPLE)
     assert stats == {"tested": 4, "killed_merits": 2, "killed_infra": 1,
-                     "iterated": 2, "promoted": 1}
+                     "iterated": 2, "promoted": 1, "abandoned": 0}
 
 
 def test_header_lines_not_counted():

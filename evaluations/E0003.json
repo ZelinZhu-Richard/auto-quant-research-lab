@@ -1,0 +1,159 @@
+{
+  "binding_status": "legacy-unverifiable-at-launch",
+  "corrected_bookkeeping": {
+    "deflated_sharpe": 0.03298780269897206,
+    "import_evaluation_ids": [
+      "E0001",
+      "E0002",
+      "E0003"
+    ],
+    "label": "counterfactual corrected bookkeeping, not historical decision inputs",
+    "n_trials": 3,
+    "sr0": 0.013438912740225422,
+    "trial_sharpes_daily": [
+      -0.07314299849486205,
+      -0.07190604045993973,
+      -0.04525104057410526
+    ],
+    "variance": 0.0002483300667912103
+  },
+  "evaluation_id": "E0003",
+  "hypothesis_id": "H001",
+  "identity_origin": "assigned-at-legacy-import",
+  "iteration": 2,
+  "metrics": {
+    "deflated_sharpe": 0.07815576975893723,
+    "end": "2025-06-30",
+    "hit_rate": 0.49023638232271327,
+    "kurtosis_raw": 6.582491241470988,
+    "max_drawdown": 0.46806042013023497,
+    "mean_daily_return": -0.0004704141612845743,
+    "n_days": 973,
+    "n_position_days": 973,
+    "n_trials": 1,
+    "sharpe_annualized": -0.8645199162884288,
+    "sharpe_daily": -0.04525104057410526,
+    "skew": -0.2746142841733375,
+    "start": "2022-11-01",
+    "std_daily_return": 0.010395654007429986,
+    "trial_sharpes_daily": [
+      -0.04525104057410526
+    ],
+    "turnover_annualized": 64.48458376156219
+  },
+  "original_evaluation_id": null,
+  "params": {
+    "lookback_days": 120,
+    "skip_days": 7
+  },
+  "provenance": {
+    "log_line": 36,
+    "log_path": "runs/shakedown_20260711_165247/toolcalls.jsonl"
+  },
+  "record_kind": "research",
+  "reserved_at": "2026-10-13T04:01:17.265625+00:00",
+  "result_sha256": "523f437188f8e20934979084fc072d8663c60553cf0b34b60710c12d381d3395",
+  "results": {
+    "aggregate": {
+      "end": "2025-06-30",
+      "hit_rate": 0.49023638232271327,
+      "kurtosis_raw": 6.582491241470988,
+      "max_drawdown": 0.46806042013023497,
+      "mean_daily_return": -0.0004704141612845743,
+      "n_days": 973,
+      "n_position_days": 973,
+      "sharpe_annualized": -0.8645199162884288,
+      "sharpe_daily": -0.04525104057410526,
+      "skew": -0.2746142841733375,
+      "start": "2022-11-01",
+      "std_daily_return": 0.010395654007429986,
+      "turnover_annualized": 64.48458376156219
+    },
+    "cost_bps_per_side": 25,
+    "engine": {
+      "data_manifest_sha256": "885599371d82fa70ed4f1faf4b9fba6d8857aca4cbb53b7ccebc7a1ad90b1a3b",
+      "git_commit": "fcd2f620c0bbd1793e7f8595250e1875f5254c03"
+    },
+    "folds": [
+      {
+        "end": "2023-06-30",
+        "fold": 1,
+        "hit_rate": 0.5,
+        "max_drawdown": 0.23454365477850736,
+        "n_days": 242,
+        "sharpe_annualized": -0.7405071646246735,
+        "start": "2022-11-01"
+      },
+      {
+        "end": "2024-02-29",
+        "fold": 2,
+        "hit_rate": 0.5286885245901639,
+        "max_drawdown": 0.10430513776530836,
+        "n_days": 244,
+        "sharpe_annualized": 0.6330423145283474,
+        "start": "2023-07-01"
+      },
+      {
+        "end": "2024-10-31",
+        "fold": 3,
+        "hit_rate": 0.46122448979591835,
+        "max_drawdown": 0.21128258012650913,
+        "n_days": 245,
+        "sharpe_annualized": -1.414991668522496,
+        "start": "2024-03-01"
+      },
+      {
+        "end": "2025-06-30",
+        "fold": 4,
+        "hit_rate": 0.47107438016528924,
+        "max_drawdown": 0.30299527345563304,
+        "n_days": 242,
+        "sharpe_annualized": -1.762610809390099,
+        "start": "2024-11-01"
+      }
+    ],
+    "generated_at": "2026-07-11T16:54:34.315187+00:00",
+    "hypothesis_id": "H001",
+    "iteration": 2,
+    "iteration_history": [
+      {
+        "iteration": 0,
+        "params": {
+          "lookback_days": 90,
+          "skip_days": 7
+        }
+      },
+      {
+        "iteration": 1,
+        "params": {
+          "lookback_days": 60,
+          "skip_days": 7
+        }
+      },
+      {
+        "iteration": 2,
+        "params": {
+          "lookback_days": 120,
+          "skip_days": 7
+        }
+      }
+    ],
+    "params": {
+      "lookback_days": 120,
+      "skip_days": 7
+    },
+    "referee_inputs": {
+      "deflated_sharpe": 0.07815576975893723,
+      "n_trials": 1,
+      "trial_sharpes_daily": [
+        -0.04525104057410526
+      ]
+    },
+    "status": "ok"
+  },
+  "run_id": "shakedown_20260711_165247",
+  "source": "backfill",
+  "source_commit": "cf20ab799e15d9a201f4702bbd4a083c9c96b6af",
+  "source_revision": "059e0952a367f5e0b4ded60cafd7fd027fa835c5",
+  "status": "completed-legacy"
+}
