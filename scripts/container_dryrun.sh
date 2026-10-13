@@ -39,30 +39,13 @@ echo "=== [3/3] dry-run in-container ==="
 # uniform launcher contract (no-op here: the dryrun service mounts no
 # credential seed — the acceptance run needs none)
 bash /workspace/scripts/seed_codex_home.sh || { echo "FAIL: seed script errored"; exit 1; }
-WORK=/tmp/dryrun
-rm -rf "$WORK"
-mkdir -p "$WORK"
-rsync -a --exclude '.git' --exclude '.venv' --exclude '__pycache__' \
-    --exclude 'runs' --exclude 'data' /workspace/ "$WORK/"
-mkdir -p "$WORK/data"
-cp -r /workspace/data/train_val "$WORK/data/train_val"
-cp /workspace/data/universe.json /workspace/data/download_report.json "$WORK/data/" 2>/dev/null || true
-cd "$WORK"
-git init -q && git add -A && git commit -qm "in-container dry-run baseline"
-uv run python -m orchestrator.loop --mode dry-run --max-cycles 2 \
-    --run-id container_dryrun
+# Create an absent destination under a session temp directory. The shared
+# allowlist initializer starts fresh history and a new fixture Git repository.
+WORK_PARENT="$(mktemp -d /tmp/quantlab-dryrun.XXXXXX)" || exit 1
+WORK="$WORK_PARENT/workspace"
+QUANTLAB_PYTHON="${UV_PROJECT_ENVIRONMENT:-/home/labuser/venv}/bin/python" bash /workspace/scripts/demo.sh "$WORK"
 STATUS=$?
-
-# Launcher finalize (same contract as shakedown.sh / the compose lab
-# command): the loop makes no run-end commit; commit the log tail +
-# STATE.md here, pathspec-limited, after the logger has exited.
-# Fail-closed: every git step's exit code is checked — a git failure must
-# never be mistaken for a clean tree.
-git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md || { echo "FAIL: finalize git add failed"; exit 1; }
-if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md; then
-    git commit -qm "run container_dryrun: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md \
-        || { echo "FAIL: finalize commit failed"; exit 1; }
-fi
+cd "$WORK" || exit 1
 
 if [ $STATUS -ne 0 ]; then
     echo "FAIL: dry-run exited $STATUS"

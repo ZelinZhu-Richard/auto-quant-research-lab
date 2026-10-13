@@ -59,10 +59,7 @@ services:
       bash -c 'bash scripts/seed_codex_home.sh || exit 71;
       uv run python -m orchestrator.loop --mode live
       --run-id ${RUN_ID:-overnight}; status=$$?;
-      git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md || exit 70;
-      if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md; then
-      git commit -m "run ${RUN_ID:-overnight}: toolcall log finalized"
-      -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md || exit 70; fi;
+      uv run python scripts/finalize_run.py --run-id ${RUN_ID:-overnight} || exit 70;
       exit $$status'
 
   # A6 acceptance service: no credentials, same mounts and network posture.

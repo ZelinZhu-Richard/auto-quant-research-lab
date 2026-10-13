@@ -2,8 +2,7 @@
 # shakedown.sh — HUMAN-ONLY (R7, PROJECT_BRIEF §11).
 #
 # Runs exactly ONE real hypothesis cycle in the foreground with live CLIs,
-# in THIS repo (its commits land on the real audit spine — that is the
-# point: H001 becomes the first real ledger entry). Claude Code built this
+# in an explicitly approved research workspace after migration review. Claude Code built this
 # script (A7) but must never execute it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -29,7 +28,7 @@ RUN_ID="shakedown_$(date -u +%Y%m%d_%H%M%S)"
 bash "$(dirname "$0")/seed_codex_home.sh"
 echo
 echo "--- one live cycle (run id: ${RUN_ID}) ---"
-echo "    S1 claude -> S2 codex+tests -> S3 engine -> S4 codex referee -> S5 memo"
+echo "    S1 claude -> S2 codex+tests -> S3 engine -> S4 rule + secondary referee -> S5 memo"
 LOOP_STATUS=0
 uv run python -m orchestrator.loop --mode live --max-cycles 1 \
     --run-id "${RUN_ID}" --wall-clock-hours 1 || LOOP_STATUS=$?
@@ -41,11 +40,8 @@ uv run python -m orchestrator.loop --mode live --max-cycles 1 \
 # so anything else that happens to be staged can never ride along (R5).
 # LEDGER.md/PROMOTED_QUEUE.md included as the backstop for a post-append
 # halt: a salvaged-but-uncommitted ledger line must never be swept into
-# the next run's first commit (deflated-Sharpe N reads the ledger).
-git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md
-if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md; then
-    git commit -m "run ${RUN_ID}: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md
-fi
+# the next run's first commit (evaluation records supply trial history).
+uv run python scripts/finalize_run.py --run-id "${RUN_ID}" || exit 70
 
 if [ "${LOOP_STATUS}" -ne 0 ]; then
     echo "orchestrator exited ${LOOP_STATUS} — see STATE.md and runs/${RUN_ID}/"
@@ -70,5 +66,5 @@ echo "toolcall log    : runs/${RUN_ID}/toolcalls.jsonl"
 echo "run summary     : runs/${RUN_ID}/summary.json"
 echo
 echo "Next (human): read the git log and every artifact above; push if"
-echo "satisfied. SPEC.md is already APPROVED and FROZEN (v1.0, 2026-07-11);"
-echo "a clean shakedown completes Gate H — the overnight loop may then run."
+echo "satisfied. SPEC v1.1 remains DRAFT; SPEC approval and historical migration"
+echo "review are separate human gates before any research cutover."
