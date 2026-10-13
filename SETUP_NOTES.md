@@ -168,7 +168,7 @@ same seed + finalize chain):
       -e RUN_ID -e ANTHROPIC_API_KEY \
       -v quantlab_codex_home:/home/labuser/.codex \
       -v "$HOME/.codex/auth.json:/home/labuser/.codex-seed/auth.json:ro" \
-      lab bash -c 'bash scripts/seed_codex_home.sh || exit 71; uv run python -m orchestrator.loop --mode live --run-id "$RUN_ID" --max-cycles 3 --wall-clock-hours 1; status=$?; git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md || exit 70; if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md; then git commit -m "run $RUN_ID: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md || exit 70; fi; exit $status'
+      lab bash -c 'bash scripts/seed_codex_home.sh || exit 71; uv run python -m orchestrator.loop --mode live --run-id "$RUN_ID" --max-cycles 3 --wall-clock-hours 1; status=$?; uv run python scripts/finalize_run.py --run-id "$RUN_ID" || exit 70; exit $status'
 
 Full overnight run (uses the compose command as committed):
 
@@ -238,3 +238,20 @@ diff touching an R5 path).
    at commit time, and any reviewer can check the declaration against
    the round history. A gate-fix commit missing the trailer, or one
    declaring a recurrence without halting, is itself a finding.
+
+## SPEC v1.1 implementation clarification (DRAFT)
+
+The ratified review-gate procedure above remains in force. For the approved
+v1.1 repair, implementation commits in an isolated candidate may precede
+the final reviewer-only gate; that gate must inspect the complete candidate
+against the approved local-main snapshot before integration. This run allows
+only one bounded repair/re-review round and grants no merge, push or research
+execution authority. SPEC remains DRAFT.
+
+The proposed v1.1 record accounting and terminal-decision rules in SPEC §7,
+§11b and §14 supersede the v1.0 ledger-count and unconditional mid-cycle
+infra-kill summaries above only upon human approval. Launchers now include
+evaluations and hypotheses in their limited finalization paths. Existing
+quota halting, bounded repair, model pins, authentication, network and mount
+restrictions remain unchanged. Research migration readiness is a separate
+human decision; consult MIGRATION.md before any cutover.

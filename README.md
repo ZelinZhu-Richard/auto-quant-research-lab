@@ -1,5 +1,7 @@
 # quantlab
 
+**SPEC v1.1 is DRAFT. Integration and research cutover remain human gates.**
+
 An autonomous multi-agent research lab that generates crypto trading
 hypotheses, implements them, backtests them against a frozen engine, and
 kills them against criteria registered before any data is touched. **The
@@ -15,10 +17,14 @@ curve, something has gone wrong with it.
 | killed on infrastructure | 6 |
 | exhausted their iteration budget before dying | 1 |
 | promoted | 0 |
+| abandoned | 0 |
+| completed evaluations (including labeled legacy imports) | 3 |
+| cancelled evaluations | 0 |
+| unresolved evaluations | 0 |
 | single-shot holdout runs (human-only) | 0 |
 | infrastructure-kill rate | 85.7% |
 
-*Computed from [LEDGER.md](LEDGER.md) by [scripts/ledger_stats.py](scripts/ledger_stats.py) on 2026-07-12 03:49 UTC — the table regenerates from the ledger and cannot drift from it.*
+*Computed from [LEDGER.md](LEDGER.md) by [scripts/ledger_stats.py](scripts/ledger_stats.py) on 2026-10-13 04:03 UTC — the table derives from the ledger and kind-scoped evaluation records.*
 <!-- LEDGER_STATS:END -->
 
 ## The problem this design exists to solve
@@ -37,8 +43,8 @@ The second failure needs no bugs at all. Test enough hypotheses against
 the same three years of data and some will clear any fixed bar by chance;
 run an LLM idea generator overnight and you have industrialized multiple
 testing. Honest code plus enough attempts still manufactures false
-discoveries. That is why the bar here *rises with the attempt count*
-(deflated Sharpe over the running ledger), why kill thresholds are frozen
+discoveries. That is why the engine records completed evaluations for its
+deflated-Sharpe calculation, why kill thresholds are frozen
 before results exist, and why the final check is a single-shot holdout
 the loop physically cannot see.
 
@@ -66,21 +72,20 @@ and the first results only exist as of
 Moving a goalpost after seeing results would require rewriting public git
 history.
 
-**3. Independence of the referee.** The stage that judges results runs on
-a **different model family** than the stage that invented the idea
-(Anthropic writes, OpenAI referees), under a zero-discretion decision
-rule: parse the pre-registered blocks, compare against results.json,
-apply SPEC §8 mechanically, emit a schema-validated decision that cites
-every number. The referee never proposes fixes — two referees given the
-same inputs must reach the same decision, and the orchestrator rejects
-any output that deviates from the schema or the declared grid.
+**3. The decision rule is executable authority.** `orchestrator/rule.py`
+validates inputs and applies SPEC §8. Its decision is durably bound to the
+completed evaluation before the optional secondary Codex referee runs.
+The model's agreement, disagreement or unavailability is recorded separately;
+it cannot override the verdict. S1 remains Anthropic; the secondary remains
+OpenAI with the existing pinned model and effort.
 
-**4. Deflated Sharpe: the bar rises with the attempt count.** Idea #40
-faces a harder promotion bar than idea #3. The engine computes the
-deflated Sharpe ratio (Bailey & López de Prado) using the trial count and
-trial-Sharpe variance read from the append-only ledger at referee time,
-so industrialized multiple testing is priced into every decision rather
-than discovered in a postmortem.
+**4. Frozen evaluation accounting.** Each completed parameter variant has
+its own evaluation ID and preserved full result. DSR uses eligible prior
+completed evaluations of the workspace's kind plus the current one exactly
+once. The recorded contributor IDs, input hashes and DSR do not change when
+later evaluations complete. Correlated variants are not independent trials;
+this is corrected bookkeeping, not calibrated error control or proof that
+more attempts always imply a higher threshold.
 
 **5. Single-shot, physically absent holdout.** Data after 2025-07-01
 lives outside the repository entirely; the container's mount table binds
@@ -97,7 +102,7 @@ flowchart LR
     S1["S1 HYPOTHESIZE<br/>claude writes the card<br/>criteria pre-registered"]
     S2["S2 IMPLEMENT<br/>codex writes signal.py<br/>4 harness checks"]
     S3["S3 BACKTEST<br/>frozen engine<br/>no LLM"]
-    S4["S4 REFEREE<br/>different model family<br/>zero discretion"]
+    S4["S4 RULE<br/>durable decision<br/>secondary model check"]
     S5["S5 MEMO<br/>written for every outcome"]
     L["LEDGER line<br/>+ commit per stage"]
     S1 --> S2 --> S3 --> S4
@@ -105,10 +110,15 @@ flowchart LR
     S4 -->|"KILL / PROMOTE"| S5 --> L
 ```
 
-Any mid-cycle failure becomes `KILLED(infrastructure)` — logged
-distinctly from merit kills so the infrastructure failure rate is itself
-a tracked metric — and the loop continues (one repair attempt on red
-tests, never a retry spiral).
+Before a bound decision, ordinary stage failures are recorded as
+`KILLED(infrastructure)`, with at most one harness repair. Quota and budget
+stops halt further work. After a terminal KILL or PROMOTE, memo or secondary
+model failure cannot erase the decision. Recovery completes memo, ledger,
+queue and lifecycle idempotently from that exact preserved evaluation.
+An interrupted ITERATE is abandoned without relaunch. A possible engine
+launch without acceptable results remains unresolved and blocks later runs.
+Stale locks and ambiguous evaluations require human reconciliation; neither
+is automatically cleared. See SPEC §11b and [MIGRATION.md](MIGRATION.md).
 
 ## Anatomy of one hypothesis: H001
 
@@ -141,7 +151,10 @@ pre-registered iterations (60d, then 120d) exactly in declared order —
 the orchestrator patches one `PARAMS` line per iteration, no LLM
 involved. Final iteration: annualized Sharpe **−0.86**, max drawdown
 **46.8%**, hit rate **49.0%**, turnover 64×/year, deflated Sharpe
-**0.078** at trial count N=1.
+**0.078** at the original v1.0 trial count N=1. These original artifacts
+remain unchanged. The [separate correction note](hypotheses/H001/CORRECTION_v1.1.md)
+labels the three-evaluation recount and its limitations; it is not a new
+experiment or a replacement historical decision.
 
 **The decision** (S4, codex) cites every number against every threshold:
 
@@ -212,39 +225,40 @@ that can no longer happen).
   and volume stories — not genuinely novel structure. The pipeline's
   value is killing them honestly, not the originality of what it tries.
 
-## Reproduce it
+## Fixture demo and verification
+
+Prerequisites: the existing Python 3.12 dependency environment and a
+separately authorized local `data/train_val/` snapshot plus `universe.json`
+and `download_report.json`. This command installs and downloads nothing.
+An unspecified new download is not a promise of identical reproduction.
 
 ```bash
-git clone https://github.com/ZelinZhu-Richard/auto-quant-research-lab.git
-cd auto-quant-research-lab
-uv sync
-
-# Data: ~10 min, Coinbase Exchange public API, no keys required.
-# Fetch goes through the committed wrapper (not data_pipeline.py's
-# download-all directly): upstream pagination dies on actively-trading
-# symbols when the request window crosses "now" — the wrapper is the
-# canonical fix, documented in BACKLOG.md.
-uv run python scripts/fetch_train_val_data.py 2022-07-01
-uv run python data_pipeline.py universe --start 2022-07-01
-uv run python data_pipeline.py split    --cutoff 2025-07-01
-mv data/holdout ~/quantlab_holdout_DO_NOT_MOUNT   # R2: physically absent
-
-# 5-minute demo, no LLM keys: 55 tests, then two full mocked-LLM cycles
-# against the real engine and real data — ledger lines, memos, and
-# per-stage commits included.
-uv run pytest tests/
-uv run python -m orchestrator.loop --mode dry-run --max-cycles 2 --run-id demo
-git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md && git commit -m "run demo: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md
-
-# One real cycle, live CLIs in the foreground (requires claude + codex
-# installed and authenticated):
-bash scripts/shakedown.sh
+# Destination must not exist and must be outside the research checkout.
+QUANTLAB_PYTHON=/absolute/path/to/existing/python bash scripts/demo.sh /absolute/path/to/new-fixture
 ```
 
-The container path (`docker compose run --rm dryrun`) additionally proves
-the mount and egress posture: it asserts `engine/` is unwritable,
-`data/` contains exactly train_val plus the audit JSONs, and pypi.org is
-unreachable, then runs the same two cycles inside the sandbox.
+The allowlist initializer copies only code, listed configuration and the
+permitted data snapshot. It starts empty hypotheses, evaluations, ledger,
+queue and state; no research logs or Git history are copied. Its manifest
+records `kind: fixture` and the exact data-manifest SHA256. Two fake-model
+cycles use the actual engine and the fixture's own increasing trial history.
+A dry-run directed at a research workspace is refused before any writes.
+
+Run tests in a disposable workspace with synthetic fixtures. The separately
+invoked hypothesis harness skips without `QUANTLAB_HYPOTHESIS`; data-dependent
+checks skip when the disposable workspace lacks the permitted data snapshot.
+Neither fake tests nor this DRAFT authorize a live shakedown, calibration,
+container integration test, data download or research cutover.
+
+The container acceptance script retains its existing read-only-mount and
+egress checks, then uses the same clean fixture initializer. Those integration
+checks require separate authorization and were not run for this repair.
+
+## Relationship to qbench
+
+qbench addresses the same class of reliability problem in a controlled,
+typed setting. qbench did not evaluate quantlab. Arbitrary code generation
+is outside qbench's scope.
 
 ## What this is not
 
@@ -263,9 +277,8 @@ Models per stage (pinned in `orchestrator/stages.py`, audited per run in
 `runs/<id>/summary.json`): S1/S5 hypothesis and memo — Claude (CLI
 default, identity recorded each run); S2 implementation — `gpt-5.6-sol`
 at `xhigh` effort; S4 referee — `gpt-5.6-terra` at the effort floor
-(`none`), deliberately not the strongest configuration available: **the
-referee needs obedience, not capability** — its job is mechanical
-comparison, not thinking.
+(`none`), retained as a secondary re-derivation. The deterministic rule
+is authoritative; no model configuration was changed for v1.1.
 
 This repository was built by Claude Code, with OpenAI Codex as the
 structural reviewer, under the gate protocol documented in

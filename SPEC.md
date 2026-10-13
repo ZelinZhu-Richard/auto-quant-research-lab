@@ -1,10 +1,9 @@
-# SPEC.md — Frozen Research Specification
+# SPEC.md — Research Specification
 #
-# STATUS: v1.0 — APPROVED (Gate H SPEC approval, human, 2026-07-11).
-# Amended at approval per the human's direction: hit-rate floor 0.50
-# (sanity bound; skewed-payoff justification, §8). FROZEN as of this
-# version: read every cycle, written by no one. Changes require a new
-# versioned SPEC and a new run series.
+# STATUS: v1.1 — DRAFT. Not approved for research cutover.
+# The v1.0 scientific contracts, cost model, criteria and threshold are
+# unchanged. This draft repairs bookkeeping, identity and recovery.
+# Human approval and a new run series are required before research use.
 
 ## 1. Data contract
 
@@ -148,27 +147,34 @@ are excluded from hit rate only).
 
 ## 7. Deflated Sharpe Ratio (Bailey & López de Prado)
 
-Purpose: penalize the aggregate Sharpe for the number of hypotheses tried.
+Purpose: account for completed evaluations in the workspace. Parameter
+variants remain correlated; this repair does not calibrate error control.
 
 Inputs: daily net returns of the aggregate window (length `T`, per-period
 sharpe `sr = mean(r)/std(r, ddof=1)`, skewness `g3`, raw kurtosis `g4`),
 and the trial count `N`.
 
-- `N` = (LEDGER.md line count at S3 time) + 1. The "+1" IS the current
-  hypothesis: its ledger line is only appended at end-of-cycle, so it is
-  never yet in the file when S3 runs — the engine adds it explicitly.
-  Iterations of the same hypothesis do not increment N (they share one
-  ledger line and one trial slot; a re-run at a new grid point overwrites
-  the current trial's sharpe, it does not add a trial).
-- Trial-Sharpe set for variance: the `sharpe=` values parsed from every
-  LEDGER.md line, EXCLUDING `nan` entries (infra-kills that never produced
-  a backtest), each de-annualized by dividing by sqrt(365), PLUS the
-  current hypothesis's `sharpe_daily` from this run. `V` = variance
-  (ddof=1) of that set. If the set has fewer than 2 elements or `V == 0`,
-  set `SR0 = 0` — i.e. the Sharpe is NOT deflated in that case and `N` has
-  no effect. Stated limitation, accepted: deflation only activates once at
-  least two numeric trial Sharpes exist in the ledger; `nan` (infra-kill)
-  trials count in `N` but contribute nothing to `V`.
+- **G1 (trial inputs).** For evaluation E in a workspace, E's recorded statistical inputs are:
+  the eligible prior completed evaluations of that workspace's kind, plus E exactly once when
+  E produces a valid result. The record preserves the contributing evaluation identities (or
+  an equivalent verifiable reference to that historical set). Once recorded, E's `n_trials`,
+  trial set, and computed DSR never change because later evaluations complete. Recovery and
+  exports never add E again after completion and never recalculate an old decision with later
+  history.
+
+- At reservation, freeze the ordered prior completed evaluation IDs,
+  daily Sharpes and full-result hashes of the workspace's kind. Eligible
+  states are `completed`, `completed-manual` and labeled `completed-legacy`.
+  `N` is this set's size plus the current evaluation exactly once.
+- `V` is sample variance (`ddof=1`) of the preserved prior daily Sharpes
+  plus the current daily Sharpe. Each completed parameter variant counts;
+  cancelled, unresolved and pre-backtest infrastructure failures do not.
+  With fewer than two Sharpes or zero variance, `SR0 = 0`; N alone then
+  does not change DSR. Do not infer a monotonically rising bar or calibrated
+  familywise error control from this bookkeeping.
+- Historical imports preserve the original results, including their old
+  trial inputs. An explicitly labeled counterfactual recount is separate;
+  it never overwrites an old result or decision or claims launch binding.
 - Expected max trial Sharpe under N trials:
   `SR0 = sqrt(V) * ((1 - g) * z(1 - 1/N) + g * z(1 - 1/(N*e)))`
   where `g = 0.5772156649` (Euler–Mascheroni), `z` = standard normal
@@ -261,7 +267,15 @@ Under `## Iteration grid (pre-registered, ordered, max 2)`:
 
 ```json
 {
-  "hypothesis_id": "H001",
+  "hypothesis_id": "H008",
+  "evaluation_id": "E0004",
+  "record_kind": "research",
+  "inputs": {
+    "signal_sha256": "<sha256 of executed signal bytes>",
+    "spec_sha256": "<sha256 of SPEC bytes>",
+    "data_manifest_sha256": "<sha256 of sorted parquet file hashes>",
+    "engine_sha256": "<sha256 of engine/*.py contents>"
+  },
   "iteration": 0,
   "params": {"lookback_days": 90},
   "iteration_history": [{"iteration": 0, "params": {"lookback_days": 90}}],
@@ -283,8 +297,11 @@ Under `## Iteration grid (pre-registered, ordered, max 2)`:
      "hit_rate": 0.0}
   ],
   "referee_inputs": {
-    "n_trials": 1,
-    "trial_sharpes_daily": [0.0],
+    "n_trials": 4,
+    "prior_evaluation_ids": ["E0001", "E0002", "E0003"],
+    "prior_result_hashes": ["<sha256>", "<sha256>", "<sha256>"],
+    "trial_evaluation_ids": ["E0001", "E0002", "E0003", "E0004"],
+    "trial_sharpes_daily": [-0.047, -0.070, -0.045, 0.0],
     "deflated_sharpe": 0.0
   },
   "status": "ok"
@@ -293,19 +310,26 @@ Under `## Iteration grid (pre-registered, ordered, max 2)`:
 
 All floats full precision (no rounding in the file). `folds` always has
 exactly 4 entries. `status` is `"ok"` or `"error: <one line>"` (an error
-status at S3 → infra-kill per R4).
+status after a possible S3 launch leaves the evaluation unresolved and
+halts; it is never evidence that no evaluation occurred). Atomic results
+are bound to their reservation by ID, tuple and all four hashes. Git HEAD
+is lineage only: a later bookkeeping commit does not invalidate inputs.
 
 ## 10. decision.json schema
 
-Exactly one writer per cycle, chosen by path:
-- MERIT path (S3 produced `status: "ok"`): the S4 REFEREE writes it, with
-  `kill_reason` ∈ {"merits", null}. The referee never writes
-  "infrastructure".
-- INFRASTRUCTURE path (any stage failed; the referee is never invoked):
-  the ORCHESTRATOR writes it mechanically, with `decision: "KILL"`,
-  `kill_reason: "infrastructure"`, `criteria: []`, `iterate_params: null`,
-  `referee_model: "orchestrator"`, and the failure line as justification
-  (R4).
+`orchestrator/rule.py` is the sole merits authority, in every mode.
+The orchestrator atomically writes its validated output before invoking
+any optional secondary referee. It binds `evaluation_id`, `inputs` and
+`rule_version: "rule:spec-v1.1"` to an immutable completed evaluation.
+The lifecycle then enters `decided` with the same ID and decision. The
+separate `referee_llm.json` records agreement, disagreement, invalid output
+or unavailability; it cannot change or erase the rule decision.
+
+Before a bound decision, explicit rule input errors and ordinary stage
+failures may produce an orchestrator `KILL(infrastructure)`, with empty
+criteria and no merits judgment. Quota and budget stops halt the run.
+After a bound terminal decision, the verdict stands through all later
+failures. `_infra_kill` refuses to overwrite any bound rule decision.
 
 ```json
 {
@@ -322,7 +346,11 @@ Exactly one writer per cycle, chosen by path:
   ],
   "iterate_params": null,
   "justification": "One paragraph citing the pre-registered numbers above.",
-  "referee_model": "codex <model id>",
+  "referee_model": "rule:spec-v1.1",
+  "rule_version": "rule:spec-v1.1",
+  "evaluation_id": "E0004",
+  "inputs": {"signal_sha256": "<hex>", "spec_sha256": "<hex>",
+             "data_manifest_sha256": "<hex>", "engine_sha256": "<hex>"},
   "timestamp": "2026-07-07T12:00:00+00:00"
 }
 ```
@@ -339,15 +367,69 @@ Exactly one writer per cycle, chosen by path:
 #N | name | DECISION(reason) | sharpe=X dsr=Y dd=Z hit=W | tests=pass|fail
 ```
 
-- `#N`: 1-based hypothesis counter == LEDGER line number.
+- `#N`: durable 1-based hypothesis identity, not a count of successful backtests.
+  A reserved identity is never reused, even if its cycle does not finish.
 - `DECISION(reason)`: `KILLED(merits)`, `KILLED(infrastructure)`,
-  `PROMOTED`, or `ITERATED->KILLED(...)` etc. — final state only, one line
+  `PROMOTED`, `ITERATED->KILLED(...)`, `ABANDONED(interrupted)`,
+  `ABANDONED(interrupted-after-iterate)` or `ABANDONED(unbound-decision)` — final state only, one line
   per hypothesis regardless of iterations.
 - `sharpe` = aggregate annualized net Sharpe (4 decimals), `dsr` = deflated
   Sharpe (4 decimals), `dd` = max drawdown fraction (4 decimals), `hit` =
   hit rate (4 decimals). For infra-kills where no backtest ran, all four
   are `nan`.
 - `tests=pass` iff the S2 test suite passed.
+
+## 11b. Durable records, workspace boundary and recovery
+
+- `WORKSPACE.json` declares one of `research`, `fixture`, `synthetic` or
+  `replay`. Loop and engine reject a kind mismatch before any file write.
+  All consumers use that workspace: trial inputs, ledger prompt context,
+  identities, promotion queue, statistics, lifecycle and Git history.
+  Foreign-kind records fail admission. Research additionally requires
+  explicit human migration review (`migration_ready: true`); the candidate
+  ships with this flag false. Never set it automatically.
+- A workspace has one writer. `.quantlab.lock` is exclusively created
+  with PID, start time and ownership token before recovery or mutations.
+  The engine child requires its parent's lease. A second writer is refused.
+  A stale lock remains after SIGKILL; only a human may clear it after
+  verifying the previous writer is stopped. There is no automatic clearing.
+- Hypothesis IDs are reserved in `hypotheses/H###/lifecycle.json` before
+  S1. Allocation includes existing directories and ledger IDs, including
+  pre-v1.1 history. Terminal lifecycle states: `closed`, `infra-killed`,
+  `abandoned`. IDs are never recycled.
+- Evaluation IDs are reserved in `evaluations/E####.json` before S3,
+  recording hypothesis, iteration, params, run, kind, time, evaluated-input
+  hashes, Git lineage and frozen prior trials. The persisted `launched`
+  boundary precedes the subprocess and means it MAY have started.
+- Recovery cancels a still-`reserved` evaluation as known never launched.
+  For `launched`, only a valid, matching, finite `status: ok` result permits
+  completion; the full result and its canonical SHA256 are preserved.
+  Missing, truncated, foreign-ID, tuple or hash mismatch evidence becomes
+  `unresolved`, visible in TRIALS and statistics, and blocks further work.
+  Completed records are immutable; repeated completion only accepts the
+  identical full result. Recovery never launches another evaluation.
+- Human reconciliation only: `scripts/reconcile_evaluation.py` requires
+  explicit authorization and a note. `completed-manual` requires matching
+  result evidence; `cancelled` requires confirmation that launch never
+  happened. Neither the loop nor recovery invokes this command. Legacy
+  imports use separate `completed-legacy` records, import-assigned IDs and
+  evidence-backed provenance; they do not invent original launch IDs.
+- A decision written before its lifecycle update remains authoritative
+  when bound to a completed evaluation and matching hashes. Otherwise it
+  is preserved as `decision.unbound.json` and the hypothesis is abandoned.
+  Terminal finalization reads that exact evaluation (never the latest one),
+  writes a missing recovery memo, appends the ledger, appends the promotion
+  queue if needed, then closes the lifecycle. Ledger number, queue ID and
+  terminal lifecycle checks make repeating those steps idempotent.
+- S5 failures retain the decision and produce `memo_status: failed`,
+  counted in `summary.json:memo_failures`. Recovery memos are marked
+  `finalized-by-recovery`. An interrupted ITERATE is preserved as an
+  instruction, ends as abandoned and is never automatically resumed;
+  completed evaluations remain eligible trials.
+- **Supported failure model:** process interruption, including SIGKILL,
+  and restart. Writes use temporary files, fsync and atomic replacement.
+  This version makes no guarantee against arbitrary disk corruption or
+  power loss during a write; it has not tested directory-fsync durability.
 
 ## 12. Hard stops for the overnight loop (enforced by orchestrator/loop.py)
 
@@ -358,47 +440,64 @@ Exactly one writer per cycle, chosen by path:
 | consecutive infrastructure kills | 3 → halt + diagnosis written to STATE.md |
 | max iterations per hypothesis | 2 (also enforced by referee protocol) |
 | per-call claude budget | `--max-budget-usd 2.00` |
-| per-run LLM cost ceiling | $25.00 summed over claude-reported `total_cost_usd`; codex spend counted when its JSONL events expose token usage, otherwise logged as unknown |
+| per-run LLM cost ceiling | $25.00 summed over claude-reported `total_cost_usd`; codex usage reported only when present in CLI stdout/stderr; missing usage is null |
 | per-stage subprocess timeout | S1 600s, S2 1200s, S3 900s, S4 600s, S5 600s |
 
-On any hard stop: write the reason to STATE.md, commit locally, exit 0.
+On a handled hard stop: record the reason in STATE.md and summary.json,
+exit 0; the finalizing launcher commits the tail and records with a limited
+pathspec. A refused workspace admission exits nonzero without writes.
+Quota exhaustion has its own halt class and never triggers another model
+call. A terminal rule decision remains final if quota, cost or wall-clock
+limits trip afterward; finalize it without further model work. An ITERATE
+instruction remains nonterminal and is abandoned on interrupted recovery.
 
-## 13. Referee protocol (S4) — self-contained instructions
+Unknown Codex usage is JSON `null` per call and in `codex_tokens` whenever
+any Codex call lacks usage. Summaries and budget messages separately expose
+`codex_tokens_observed`, `codex_calls_reported`, `codex_calls_total`,
+`codex_usage_complete` and the per-call list. Observed zero is distinct from
+unknown. This is usage accounting, not a claim of complete dollar spend.
 
-The referee model receives: this SPEC (sections 8, 8b, 10), hypothesis.md,
-and results.json. It must:
-1. Parse the pre-registered kill-criteria JSON block and the ordered
-   iteration-grid JSON block from hypothesis.md (Section 8b shapes).
-2. Compare each criterion against results.json values (results.json is
-   ground truth; the referee does no arithmetic beyond comparisons — DSR
-   is precomputed in `referee_inputs.deflated_sharpe`, and tried grid
-   points are listed in `iteration_history`).
-3. Apply Section 8's decision rule mechanically.
-4. Emit decision.json (Section 10 schema) and NOTHING else. No fixes, no
-   new ideas, no commentary outside the justification paragraph.
+## 13. Referee protocol (S4)
 
-Acceptance test for this SPEC (A1): a different model, given only this
-file plus a hypothesis.md and results.json, reaches the same decision as
-the reference implementation.
+`orchestrator/rule.py` validates required shape, finite numbers, registered
+criteria, iteration order and history consistency, then implements §8.
+Missing or inconsistent inputs raise `RuleInputError`; no merits verdict
+is emitted. `validate_decision` checks both rule and secondary output.
+The decision is persisted and committed before the secondary call starts.
+The secondary uses the existing pinned S4 configuration and a synchronous
+bounded call. Its output is diagnostic only; all exceptions are recorded
+as unavailable, and quota failures additionally halt further model work.
 
-## 14. Stage-by-stage cycle contract (operational summary)
+## 14. Pipeline stages
 
-S1 HYPOTHESIZE (claude): writes `hypotheses/H###/hypothesis.md` per the
-   template; must read last 30 LEDGER lines and avoid duplicating killed
-   ideas; declares iteration grid NOW (max 2 points beyond iteration 0) and
-   max lookback <= 120 days.
-S2 IMPLEMENT (codex): writes `hypotheses/H###/signal.py` implementing
-   Section 2, plus passing the shared test harness (lookahead, NaN
-   handling, index alignment, determinism). Red tests → ONE repair attempt
-   → else infra-kill.
-S3 BACKTEST (engine, no LLM): `uv run python -m engine.run_backtest
-   --hypothesis H###` writes results.json (Section 9).
-S4 REFEREE (codex): emits decision.json (Sections 8, 10, 13).
-S5 MEMO (claude): writes `hypotheses/H###/memo.md` — one page, ALL
-   outcomes, includes lineage (git commit, data manifest sha256, hypothesis
-   card version).
-Then: append LEDGER line, overwrite STATE.md, `git add -A && git commit`
-(local only during overnight runs, R6).
+S1 HYPOTHESIZE (claude): reserve a hypothesis ID, then write and commit
+   its card with pre-registered blocks before any evaluation.
+S2 IMPLEMENT (codex): writes signal.py; the existing four contract checks
+   run. Red tests get one repair attempt, then infrastructure failure.
+S3 BACKTEST (engine, no LLM): reserve an evaluation ID and input identities,
+   persist the launch boundary, invoke once with the ID, kind and writer
+   lease, and preserve the complete result before S4.
+S4 RULE (code): decide and bind authority to that completed result; the
+   existing Codex referee configuration supplies a recorded secondary check.
+S5 MEMO (claude): writes memo with result lineage. Its failure cannot erase
+   a terminal decision. After a terminal decision, finalization records the
+   ledger, queue where appropriate, lifecycle and state. Local stage commits
+   never push; launcher finalization captures final logs and records.
 
-PROMOTE → append hypothesis id to PROMOTED_QUEUE.md. Holdout is HUMAN-ONLY
-(R2, Section 11 of PROJECT_BRIEF).
+R4 applies up to and including S4 where no valid rule decision exists.
+After a terminal KILL or PROMOTE, the decision stands. Launch uncertainty
+halts for human reconciliation; an interrupted ITERATE is not a merits kill.
+PROMOTE remains a human-only, single-shot evaluation gate, never automatic.
+
+## Changes from v1.0 (DRAFT)
+
+- Count completed evaluations, including parameter variants, with frozen
+  historical contributors; remove dependence on ledger row count.
+- Reserve durable IDs and bind engine results to the evaluated bytes.
+- Preserve full immutable results, record launch uncertainty and recover
+  decisions without repeating evaluation or inventing verdicts.
+- Use §8 as executable authority; retain the model check as secondary.
+- Isolate fixture/synthetic/replay workspaces and enforce one writer.
+- Report unknown usage as null with observed-subtotal completeness fields.
+- Preserve all original research artifacts and label legacy imports and
+  bookkeeping recounts. No scientific threshold, fold, cost or grid change.

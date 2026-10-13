@@ -58,7 +58,10 @@ def test_loader_rejects_non_utc_tz(tmp_path):
     bad = pd.DataFrame(
         {c: [1.0, 2.0] for c in ["open", "high", "low", "close", "volume"]},
         index=pd.DatetimeIndex(
-            ["2023-01-01", "2023-01-02"], tz="US/Eastern", name="date"
+            # any non-UTC zone will do; canonical name on purpose: "US/Eastern" is a
+            # legacy link that Ubuntu 24.04 ships only in tzdata-legacy (absent on a
+            # fresh host, present on macOS), so the test must not depend on it
+            ["2023-01-01", "2023-01-02"], tz="America/New_York", name="date"
         ),
     )
     bad.to_parquet(tmp_path / "EASTERN.parquet")
