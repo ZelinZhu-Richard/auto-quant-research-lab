@@ -11,6 +11,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from engine.workspace import assert_scoped_history, require_writer
+from orchestrator.records import atomic_text
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -25,6 +28,7 @@ def write_state(
     last_error: str,
     consecutive_infra_kills: int,
 ) -> None:
+    require_writer(repo_root)
     lines = [
         "# STATE.md — overwritten at every stage transition; max 50 lines.",
         "",
@@ -36,7 +40,7 @@ def write_state(
         f"consecutive_infra_kills: {consecutive_infra_kills}",
         f"updated: {_now()}",
     ]
-    (repo_root / "STATE.md").write_text("\n".join(lines[:50]) + "\n", encoding="utf-8")
+    atomic_text(repo_root / "STATE.md", "\n".join(lines[:50]) + "\n")
 
 
 def _fmt(value: float | None) -> str:
@@ -56,18 +60,27 @@ def append_ledger(
     hit: float | None,
     tests_pass: bool,
 ) -> str:
+    require_writer(repo_root)
     line = (
         f"#{number} | {name} | {decision} | "
         f"sharpe={_fmt(sharpe)} dsr={_fmt(dsr)} dd={_fmt(dd)} hit={_fmt(hit)} | "
         f"tests={'pass' if tests_pass else 'fail'}"
     )
-    with (repo_root / "LEDGER.md").open("a", encoding="utf-8") as fh:
-        fh.write(line + "\n")
+    path = repo_root / "LEDGER.md"
+    old = path.read_text() if path.exists() else ""
+    existing = [row for row in old.splitlines() if re.match(rf"^#{number}\s*\|", row)]
+    if existing:
+        if existing != [line]:
+            raise RuntimeError(f"conflicting ledger evidence for hypothesis {number}")
+        return line
+    # Logical append, atomic replacement: interruption cannot persist a partial line.
+    atomic_text(path, old + ("" if not old or old.endswith("\n") else "\n") + line + "\n")
     return line
 
 
 def ledger_tail(repo_root: Path, n: int = 30) -> str:
     """Last n hypothesis lines — the S1 context budget (PROJECT_BRIEF §5)."""
+    assert_scoped_history(repo_root)
     path = repo_root / "LEDGER.md"
     if not path.exists():
         return "(ledger empty)"
@@ -79,17 +92,16 @@ def ledger_tail(repo_root: Path, n: int = 30) -> str:
 
 
 def next_hypothesis_number(repo_root: Path) -> int:
-    path = repo_root / "LEDGER.md"
-    if not path.exists():
-        return 1
-    numbers = [
-        int(m.group(1))
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if (m := re.match(r"^#(\d+)\s*\|", line.strip()))
-    ]
-    return (max(numbers) + 1) if numbers else 1
+    # Retain the public helper without maintaining a ledger-only allocator.
+    from orchestrator.records import next_hypothesis_number as allocated_next
+    return allocated_next(repo_root)
 
 
 def append_promoted(repo_root: Path, hypothesis_id: str, name: str) -> None:
-    with (repo_root / "PROMOTED_QUEUE.md").open("a", encoding="utf-8") as fh:
-        fh.write(f"{hypothesis_id} | {name} | {_now()}\n")
+    require_writer(repo_root)
+    path = repo_root / "PROMOTED_QUEUE.md"
+    old = path.read_text() if path.exists() else ""
+    if any(row.split(" | ")[0] == hypothesis_id for row in old.splitlines()):
+        return
+    atomic_text(path, old + ("" if not old or old.endswith("\n") else "\n") +
+                f"{hypothesis_id} | {name} | {_now()}\n")

@@ -25,9 +25,9 @@ class CliResult:
 class ToolCallLog:
     def __init__(self, run_dir: Path):
         self.path = Path(run_dir) / "toolcalls.jsonl"
-        self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def append(self, record: dict) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record) + "\n")
 

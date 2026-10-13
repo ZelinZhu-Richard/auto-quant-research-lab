@@ -7,6 +7,7 @@ tz-aware comparisons only, no ns assumptions.
 """
 
 import hashlib
+import io
 from pathlib import Path
 
 import pandas as pd
@@ -65,3 +66,19 @@ def load_panel(data_dir: str | Path) -> pd.DataFrame:
     panel = pd.concat(frames, names=["symbol", "date"])
     panel = panel.swaplevel("symbol", "date").sort_index()
     return panel
+
+
+def load_panel_snapshot(data_dir: str | Path) -> tuple[pd.DataFrame, str]:
+    """Parse the exact bytes that produce the manifest (same schema/semantics)."""
+    files = sorted(Path(data_dir).glob("*.parquet"))
+    if not files:
+        raise EngineError(f"no parquet files in {data_dir}")
+    frames, lines = {}, []
+    for f in files:
+        raw = f.read_bytes()
+        lines.append(f"{f.name}:{hashlib.sha256(raw).hexdigest()}")
+        df = pd.read_parquet(io.BytesIO(raw))
+        _validate_frame(f.stem, df)
+        frames[f.stem] = df
+    panel = pd.concat(frames, names=["symbol", "date"]).swaplevel("symbol", "date").sort_index()
+    return panel, hashlib.sha256("\n".join(lines).encode()).hexdigest()

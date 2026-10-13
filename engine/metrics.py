@@ -72,7 +72,7 @@ def deflated_sharpe(
     """Deflated Sharpe Ratio per Bailey & Lopez de Prado, exactly as
     specified in SPEC §7.
 
-    n_trials: N = ledger line count + 1 (the +1 is the current hypothesis).
+    n_trials: N = eligible prior completed evaluations + current evaluation.
     trial_sharpes_daily: per-period (daily) Sharpe of every numeric trial
     INCLUDING the current one; nan entries must already be excluded.
     """

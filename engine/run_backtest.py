@@ -1,14 +1,15 @@
 """S3 BACKTEST entry point (no LLM involved).
 
-    uv run python -m engine.run_backtest --hypothesis H001
+Invoked by the orchestrator with a reserved evaluation ID and writer lease.
 
 Loads hypotheses/<id>/signal.py, runs the SPEC walk-forward, and writes
 hypotheses/<id>/results.json per SPEC §9. On any failure it writes
-status="error: <one line>" and exits non-zero (orchestrator: infra-kill).
+status="error: <one line>" and exits non-zero (possible launch: unresolved).
 """
 
 import argparse
 import json
+import statistics
 import subprocess
 import sys
 import traceback
@@ -22,8 +23,10 @@ from engine import config
 from engine.backtest import run_walkforward
 from engine.errors import EngineError
 from engine.io_guard import forbid_io
-from engine.ledger import ledger_entry_count, ledger_trial_sharpes_daily
-from engine.loader import data_manifest_sha256, load_panel
+from engine.identity import input_identity, engine_identity
+from engine.workspace import read_workspace, require_engine_lease, safe_id
+from engine.loader import load_panel_snapshot
+from orchestrator import records
 from engine.metrics import (
     deflated_sharpe,
     hit_rate,
@@ -45,12 +48,12 @@ def _git_commit(repo_root: Path) -> str:
         return "unknown"
 
 
-def _load_signal_module(signal_path: Path):
+def _load_signal_module(signal_path: Path, source: bytes | None = None):
     # Read + compile BEFORE the guard (the file itself must be readable),
     # then exec under forbid_io: a signal could otherwise cache future data
     # at IMPORT time and read it back during compute (import-time lookahead).
     try:
-        code = compile(signal_path.read_text(encoding="utf-8"),
+        code = compile(source if source is not None else signal_path.read_bytes(),
                        str(signal_path), "exec")
     except SyntaxError as exc:
         raise EngineError(f"signal.py syntax error: {exc}") from exc
@@ -74,13 +77,22 @@ def _window_metrics(window: pd.DataFrame) -> dict:
 
 
 def build_results(hypothesis_id: str, repo_root: Path, data_dir: Path,
-                  ledger_path: Path) -> dict:
+                  ledger_path: Path | None = None, *, evaluation_id: str) -> dict:
     hyp_dir = repo_root / "hypotheses" / hypothesis_id
     signal_path = hyp_dir / "signal.py"
     if not signal_path.exists():
         raise EngineError(f"{signal_path} not found")
 
-    module = _load_signal_module(signal_path)
+    workspace = read_workspace(repo_root)
+    reservation = records._read_json(records._eval_path(repo_root, evaluation_id))
+    if reservation["status"] != "launched" or reservation["hypothesis_id"] != hypothesis_id:
+        raise EngineError("engine requires a launched reservation for this hypothesis")
+    if reservation["record_kind"] != workspace["kind"]:
+        raise EngineError("reservation kind mismatch")
+    if engine_identity(repo_root) != engine_identity(Path(__file__).resolve().parent.parent):
+        raise EngineError("loaded engine package does not match reported engine identity")
+    signal_bytes = signal_path.read_bytes()
+    module = _load_signal_module(signal_path, signal_bytes)
     params = getattr(module, "PARAMS", {})
 
     iterations_path = hyp_dir / "iterations.json"
@@ -93,7 +105,12 @@ def build_results(hypothesis_id: str, repo_root: Path, data_dir: Path,
         iteration = 0
         iteration_history = [{"iteration": 0, "params": params}]
 
-    panel = load_panel(data_dir)
+    panel, manifest = load_panel_snapshot(data_dir)
+    inputs = input_identity(repo_root, hypothesis_id, signal_bytes=signal_bytes, manifest=manifest)
+    if inputs != reservation["inputs"]:
+        raise EngineError("evaluated-input mismatch")
+    if params != reservation["params"] or iteration != reservation["iteration"]:
+        raise EngineError("evaluated parameters/iteration mismatch")
     run = run_walkforward(
         panel, module.compute_signal, config.AGGREGATE_START, config.AGGREGATE_END
     )
@@ -102,8 +119,10 @@ def build_results(hypothesis_id: str, repo_root: Path, data_dir: Path,
     agg_sharpe_daily = sharpe_daily(net)
     g3, g4 = skew_and_raw_kurtosis(net)
 
-    n_trials = ledger_entry_count(ledger_path) + 1  # +1 IS the current trial
-    trial_sharpes = ledger_trial_sharpes_daily(ledger_path) + [agg_sharpe_daily]
+    prior = reservation["prior_trials"]
+    n_trials = len(prior["evaluation_ids"]) + 1
+    trial_sharpes = prior["sharpes_daily"] + [agg_sharpe_daily]
+    trial_variance = statistics.variance(trial_sharpes) if len(trial_sharpes) >= 2 else None
     dsr = deflated_sharpe(net, n_trials, trial_sharpes)
 
     folds = []
@@ -118,13 +137,16 @@ def build_results(hypothesis_id: str, repo_root: Path, data_dir: Path,
 
     return {
         "hypothesis_id": hypothesis_id,
+        "evaluation_id": evaluation_id,
+        "record_kind": workspace["kind"],
+        "inputs": inputs,
         "iteration": iteration,
         "params": params,
         "iteration_history": iteration_history,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "engine": {
             "git_commit": _git_commit(repo_root),
-            "data_manifest_sha256": data_manifest_sha256(data_dir),
+            "data_manifest_sha256": manifest,
         },
         "cost_bps_per_side": 25,
         "aggregate": {
@@ -146,6 +168,10 @@ def build_results(hypothesis_id: str, repo_root: Path, data_dir: Path,
         "referee_inputs": {
             "n_trials": n_trials,
             "trial_sharpes_daily": trial_sharpes,
+            "trial_sharpe_variance": trial_variance,
+            "prior_evaluation_ids": prior["evaluation_ids"],
+            "prior_result_hashes": prior["result_hashes"],
+            "trial_evaluation_ids": prior["evaluation_ids"] + [evaluation_id],
             "deflated_sharpe": dsr,
         },
         "status": "ok",
@@ -156,9 +182,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--hypothesis", required=True, help="e.g. H001")
     parser.add_argument("--repo-root", default=".")
+    parser.add_argument("--evaluation-id", required=True)
+    parser.add_argument("--record-kind", required=True)
+    parser.add_argument("--writer-token", required=True)
     args = parser.parse_args(argv)
 
     repo_root = Path(args.repo_root).resolve()
+    # Admission checks precede all writes, including error results.
+    read_workspace(repo_root, args.record_kind)
+    safe_id(args.hypothesis, r"H\d{3,}")
+    safe_id(args.evaluation_id, r"E\d{4,}")
+    require_engine_lease(repo_root, args.writer_token)
     # R2: the ONLY data source is <repo-root>/data/train_val. Deliberately
     # not overridable — no flag may point S3 at another dataset.
     data_dir = repo_root / "data" / "train_val"
@@ -166,9 +200,12 @@ def main(argv: list[str] | None = None) -> int:
     out_path = repo_root / "hypotheses" / args.hypothesis / "results.json"
 
     try:
-        results = build_results(args.hypothesis, repo_root, data_dir, ledger_path)
+        results = build_results(args.hypothesis, repo_root, data_dir, ledger_path,
+                                evaluation_id=args.evaluation_id)
+        reservation = records._read_json(records._eval_path(repo_root, args.evaluation_id))
+        records.validate_result(repo_root, reservation, results)
         exit_code = 0
-    except Exception as exc:  # noqa: BLE001 — any failure => infra-kill (R4)
+    except Exception as exc:  # noqa: BLE001 — preserve error evidence; parent halts
         one_line = f"{type(exc).__name__}: {exc}".splitlines()[0][:300]
         results = {
             "hypothesis_id": args.hypothesis,
@@ -178,8 +215,8 @@ def main(argv: list[str] | None = None) -> int:
         traceback.print_exc(file=sys.stderr)
         exit_code = 1
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    require_engine_lease(repo_root, args.writer_token)
+    records._write_json(out_path, results)
     print(f"wrote {out_path} (status={results['status']})")
     return exit_code
 
