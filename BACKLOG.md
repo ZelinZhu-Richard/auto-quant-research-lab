@@ -44,3 +44,43 @@
   Suggest the human name an S4 effort value to pin via an R5-gated change.
   S1/S5 (claude) are likewise unpinned by flag; summary.json records what
   the CLI reports it used each run.
+- [2026-07-12 | egress] RESOLVED (2026-07-08 A6 entry): the human declared
+  the observation condition met — proxy log shows the auth.openai.com
+  refusal, and any multi-hour run crosses a token-refresh boundary —
+  and directed adding auth.openai.com to docker/proxy/filter (R5-gated).
+  Telemetry domains observed refused in minirun_20260712 proxy logs
+  (*.datadoghq.com, ab.chatgpt.com) stay blocked: codex demonstrably
+  proceeds without them.
+- [2026-07-12 | model pinning] RESOLVED (2026-07-11 entry): S4 reasoning
+  effort is now pinned by flag per arbitration decision — to the FLOOR
+  ("none"), deliberately minimum-effort for the referee: determinism and
+  recorded identity over capability. Enum verified from the server error
+  message (none/minimal/low/medium/high/xhigh), terra@none live-probed
+  OK. Became necessary once auth-only seeding removed the config-
+  inherited value. S1/S5 (claude) remain unpinned by flag; summary.json
+  records observed identity per run.
+- [2026-08-17 | gate procedure | specimen] Round-5 arbitration closed by
+  human ruling. c92b2d9 — a fix for a self-identified recurrence, created
+  instead of halting — is ratified retroactively (the fix stands on its
+  merits; reverting would be ceremony), but the procedural violation gets
+  a structural corrective, not just a concession: every gate-fix commit
+  now ends with a findings trailer (`findings: ...` plus exactly one of
+  `recurrence: none` / `recurrence: <finding> — HALTING`), codified as
+  item 6 of the canonical gate procedure in SETUP_NOTES.md. Recorded
+  here as a specimen: procedural compliance decayed across rounds —
+  c92b2d9's own commit message NAMED the recurrence and fixed it
+  anyway — and the reviewer layer caught it. Second-layer design working
+  as intended.
+- [2026-08-17 | quota] Codex quota exhaustion observed — caused by a
+  DIFFERENT project sharing the same ChatGPT plan, NOT by this lab's
+  usage. It blocks the R5 gate review and live S2/S4 calls only; code,
+  local tests, and mocked dry-runs are unaffected. Consequences shipped
+  in this batch (human directive): quota-shaped CLI failures (429 /
+  "usage limit" / "quota" / rate-limit phrasing in the error tail, from
+  either CLI) are now RUN-HALTING — QuotaHalt, distinct in STATE.md and
+  summary.json — rather than per-hypothesis infra-kills, because the
+  shared pool means exhaustion can arrive mid-run from outside this
+  system and kill-and-continue would burn every remaining cycle as
+  identical kills. The launch runbook gains a human pre-run quota check
+  (worst case = max hypotheses × observed per-cycle usage; never launch
+  into a window shared with other heavy workloads).

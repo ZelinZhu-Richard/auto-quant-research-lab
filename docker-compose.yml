@@ -4,15 +4,25 @@
 #   docker compose run --rm lab        # live overnight loop (post-Gate H)
 #
 # The lab container sits on an INTERNAL-ONLY network; its sole egress path
-# is the tinyproxy sidecar, which forwards only to the two VERIFIED LLM
-# API domains. R2: only data/train_val (+ the two committed audit JSONs)
-# exists inside the container — data/all and data/raw hold holdout-period
-# bars and are blotted out by an empty read-only mount.
+# is the tinyproxy sidecar, which forwards only to the three VERIFIED LLM
+# API domains (docker/proxy/filter). The proxy is persistent: after any
+# filter change, redeploy it (docker compose up -d --build
+# --force-recreate proxy) or a running sidecar keeps the old rules.
+# R2: only data/train_val (+ the two committed audit JSONs) exists inside
+# the container — data/all and data/raw hold holdout-period bars and are
+# blotted out by an empty read-only mount.
 #
-# R6: this file wires NO credentials. Injecting LLM API keys is a HUMAN
-# launch-time action at Gate H, e.g.:
-#   docker compose run --rm -e ANTHROPIC_API_KEY -e OPENAI_API_KEY lab
-# with the values exported only in the human's shell.
+# R6: this file wires NO credentials. Injecting them is a HUMAN
+# launch-time action (values exported only in the human's shell); ONLY
+# the codex auth.json is mounted, read-only, at a staging path, plus a
+# named volume for the writable in-container home (OAuth refresh rotates
+# tokens; the volume persists refreshed state across --rm runs):
+#   RUN_ID=... docker compose run --rm -e RUN_ID -e ANTHROPIC_API_KEY \
+#     -v quantlab_codex_home:/home/labuser/.codex \
+#     -v "$HOME/.codex/auth.json:/home/labuser/.codex-seed/auth.json:ro" lab
+# scripts/seed_codex_home.sh seeds the home on first launch (codex
+# hard-fails on a read-only home; host ~/.codex is never mounted rw).
+# Full runbook: SETUP_NOTES.md.
 
 services:
   proxy:
@@ -46,12 +56,13 @@ services:
     # (R5); a finalize failure exits 70 instead of masking as the loop
     # status; otherwise the loop's exit status is preserved.
     command: >
-      bash -c 'uv run python -m orchestrator.loop --mode live
+      bash -c 'bash scripts/seed_codex_home.sh || exit 71;
+      uv run python -m orchestrator.loop --mode live
       --run-id ${RUN_ID:-overnight}; status=$$?;
-      git add runs/ STATE.md || exit 70;
-      if ! git diff --cached --quiet -- runs/ STATE.md; then
+      git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/ || exit 70;
+      if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/; then
       git commit -m "run ${RUN_ID:-overnight}: toolcall log finalized"
-      -- runs/ STATE.md || exit 70; fi;
+      -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/ || exit 70; fi;
       exit $$status'
 
   # A6 acceptance service: no credentials, same mounts and network posture.

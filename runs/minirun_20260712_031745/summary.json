@@ -1,0 +1,12 @@
+{
+  "run_id": "minirun_20260712_031745",
+  "mode": "live",
+  "cycles": 3,
+  "halt_reason": "max cycles (3) reached",
+  "claude_cost_usd": 0.0,
+  "codex_tokens": 0,
+  "llm_calls": 0,
+  "models": {},
+  "consecutive_infra_at_halt": 3,
+  "finished_at": "2026-07-12T03:17:48+00:00"
+}

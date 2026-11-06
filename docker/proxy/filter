@@ -1,8 +1,13 @@
 # Egress allowlist (PROJECT_BRIEF §7): api.anthropic.com + the VERIFIED
-# Codex endpoint only. Verified 2026-07-08: ~/.codex/auth.json is
-# ChatGPT-OAuth mode and the observed live endpoint is
-# wss://chatgpt.com/backend-api/codex/responses. Nothing unverified is
-# listed (see BACKLOG.md re: token-refresh domain); additions go through
-# an R5 review gate.
+# codex endpoints only.
+# - chatgpt.com: ChatGPT-OAuth mode endpoint, observed live 2026-07-08
+#   (wss://chatgpt.com/backend-api/codex/responses).
+# - auth.openai.com: OAuth token refresh. Added 2026-07-12 per human
+#   direction after the BACKLOG observation condition was declared met
+#   (refusal in proxy log; any multi-hour run crosses a refresh boundary).
+# Deliberately NOT listed (telemetry; minirun_20260712 proxy log proves
+# codex proceeds while they are refused): *.datadoghq.com, ab.chatgpt.com.
+# Additions go through an R5 review gate.
 api.anthropic.com
 chatgpt.com
+auth.openai.com

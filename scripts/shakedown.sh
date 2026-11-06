@@ -24,6 +24,9 @@ echo "--- preflight: full engine test suite ---"
 uv run pytest tests/ -q
 
 RUN_ID="shakedown_$(date -u +%Y%m%d_%H%M%S)"
+# uniform launcher contract: seed a writable ~/.codex if a read-only
+# staging mount exists (no-op on the host, where ~/.codex is writable)
+bash "$(dirname "$0")/seed_codex_home.sh"
 echo
 echo "--- one live cycle (run id: ${RUN_ID}) ---"
 echo "    S1 claude -> S2 codex+tests -> S3 engine -> S4 codex referee -> S5 memo"
@@ -36,9 +39,12 @@ uv run python -m orchestrator.loop --mode live --max-cycles 1 \
 # it completes, orphaning lines in the working tree) — and even a failed
 # preflight has already appended log lines. The commit is pathspec-limited
 # so anything else that happens to be staged can never ride along (R5).
-git add runs/ STATE.md
-if ! git diff --cached --quiet -- runs/ STATE.md; then
-    git commit -m "run ${RUN_ID}: toolcall log finalized" -- runs/ STATE.md
+# LEDGER.md/PROMOTED_QUEUE.md included as the backstop for a post-append
+# halt: a salvaged-but-uncommitted ledger line must never be swept into
+# the next run's first commit (deflated-Sharpe N reads the ledger).
+git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/
+if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/; then
+    git commit -m "run ${RUN_ID}: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/
 fi
 
 if [ "${LOOP_STATUS}" -ne 0 ]; then

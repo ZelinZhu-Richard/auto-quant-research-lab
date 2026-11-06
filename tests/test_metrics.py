@@ -1,7 +1,6 @@
 import math
 
 import pandas as pd
-import pytest
 
 from engine.metrics import (
     deflated_sharpe,

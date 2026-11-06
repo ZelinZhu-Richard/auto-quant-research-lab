@@ -1,0 +1,35 @@
+{
+  "implementation_commit": "1fa701f81ca67d848f9cc5080cb3a62dafc0d954",
+  "full_suite": {
+    "passed": 157,
+    "failed": 0,
+    "skipped": 0
+  },
+  "h001_harness": {
+    "passed": 4,
+    "failed": 0
+  },
+  "container_acceptance": {
+    "passed": 3,
+    "cycles": 2,
+    "merit_kills": 2,
+    "infrastructure_kills": 0,
+    "final_tree_clean": true,
+    "images": "existing local quantlab-dryrun and quantlab-proxy; no dependency/model upgrade"
+  },
+  "independent_review": {
+    "rounds": 3,
+    "final_verdict": "PASS",
+    "reviewed_range": "b494a06..1fa701f81ca67d848f9cc5080cb3a62dafc0d954",
+    "reviewer_reran_tests": false
+  },
+  "container_evidence_archive_sha256": "1ff3fc10c11d8cc32c0ed9579f1867de3e13e46f882642883a910103ba4f0e84",
+  "checks": [
+    "Ruff F",
+    "compileall",
+    "bash -n",
+    "docker compose config --quiet",
+    "git diff --check"
+  ],
+  "holdout_accessed": false
+}

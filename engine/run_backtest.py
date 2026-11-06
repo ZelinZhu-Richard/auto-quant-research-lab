@@ -9,40 +9,19 @@ status="error: <one line>" and exits non-zero (orchestrator: infra-kill).
 
 import argparse
 import json
-import subprocess
 import sys
 import traceback
 import types
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pandas as pd
 
 from engine import config
 from engine.backtest import run_walkforward
 from engine.errors import EngineError
 from engine.io_guard import forbid_io
-from engine.ledger import ledger_entry_count, ledger_trial_sharpes_daily
 from engine.loader import data_manifest_sha256, load_panel
-from engine.metrics import (
-    deflated_sharpe,
-    hit_rate,
-    max_drawdown,
-    sharpe_annualized,
-    sharpe_daily,
-    skew_and_raw_kurtosis,
-)
 
-
-def _git_commit(repo_root: Path) -> str:
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=repo_root, capture_output=True, text=True, timeout=30,
-        )
-        return out.stdout.strip() if out.returncode == 0 else "unknown"
-    except OSError:
-        return "unknown"
 
 
 def _load_signal_module(signal_path: Path):
@@ -63,93 +42,96 @@ def _load_signal_module(signal_path: Path):
     return module
 
 
-def _window_metrics(window: pd.DataFrame) -> dict:
-    net = window["r_net"]
-    return {
-        "n_days": int(len(window)),
-        "sharpe_annualized": sharpe_annualized(net),
-        "max_drawdown": max_drawdown(net),
-        "hit_rate": hit_rate(net, window["has_positions"]),
-    }
+def fresh_signal_callable(signal_path: Path, expected_params: dict):
+    """Compile once outside guards, execute in a fresh namespace per date.
+
+    The full-panel validation module is NEVER used to score. Reinitializing
+    each call also prevents cross-date module caches from violating purity.
+    The caller wraps import and compute together in forbid_io.
+    """
+    code = compile(signal_path.read_text(encoding="utf-8"), str(signal_path), "exec")
+    def compute(visible):
+        namespace = {"__file__": str(signal_path), "__name__": "hypothesis_signal"}
+        exec(code, namespace)  # noqa: S102 — inside backtest's forbid_io
+        if namespace.get("PARAMS") != expected_params:
+            raise EngineError("executed parameters differ from pre-registration")
+        result = namespace["compute_signal"](visible)
+        if namespace.get("PARAMS") != expected_params:
+            raise EngineError("signal changed registered parameters during execution")
+        return result
+    return compute
 
 
 def build_results(hypothesis_id: str, repo_root: Path, data_dir: Path,
                   ledger_path: Path) -> dict:
+    from engine.evidence import (input_identity, git, summarize, daily_records,
+                                 verify_journal_committed, verify_prior_iterations)
+    from engine.trials import TrialJournal, read_json
+    from engine.policy import POLICY, validate_iteration
+    from engine.metrics import deflated_sharpe_from_moments
+    from orchestrator.stages import validate_hypothesis_md, validate_signal_source
+
     hyp_dir = repo_root / "hypotheses" / hypothesis_id
-    signal_path = hyp_dir / "signal.py"
-    if not signal_path.exists():
-        raise EngineError(f"{signal_path} not found")
-
-    module = _load_signal_module(signal_path)
-    params = getattr(module, "PARAMS", {})
-
-    iterations_path = hyp_dir / "iterations.json"
-    if iterations_path.exists():
-        iteration_history = json.loads(iterations_path.read_text(encoding="utf-8"))
-        if not isinstance(iteration_history, list) or not iteration_history:
-            raise EngineError("iterations.json must be a non-empty list")
-        iteration = int(iteration_history[-1]["iteration"])
-    else:
-        iteration = 0
-        iteration_history = [{"iteration": 0, "params": params}]
-
-    panel = load_panel(data_dir)
-    run = run_walkforward(
-        panel, module.compute_signal, config.AGGREGATE_START, config.AGGREGATE_END
-    )
-
-    net = run["r_net"]
-    agg_sharpe_daily = sharpe_daily(net)
-    g3, g4 = skew_and_raw_kurtosis(net)
-
-    n_trials = ledger_entry_count(ledger_path) + 1  # +1 IS the current trial
-    trial_sharpes = ledger_trial_sharpes_daily(ledger_path) + [agg_sharpe_daily]
-    dsr = deflated_sharpe(net, n_trials, trial_sharpes)
-
-    folds = []
-    for k, (fold_start, fold_end) in enumerate(config.FOLDS, start=1):
-        window = run[(run.index >= fold_start) & (run.index <= fold_end)]
-        folds.append({
-            "fold": k,
-            "start": str(fold_start.date()),
-            "end": str(fold_end.date()),
-            **_window_metrics(window),
-        })
-
-    return {
-        "hypothesis_id": hypothesis_id,
-        "iteration": iteration,
-        "params": params,
-        "iteration_history": iteration_history,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "engine": {
-            "git_commit": _git_commit(repo_root),
-            "data_manifest_sha256": data_manifest_sha256(data_dir),
-        },
-        "cost_bps_per_side": 25,
-        "aggregate": {
-            "start": str(config.AGGREGATE_START.date()),
-            "end": str(config.AGGREGATE_END.date()),
-            "n_days": int(len(run)),
-            "n_position_days": int(run["has_positions"].sum()),
-            "sharpe_annualized": sharpe_annualized(net),
-            "sharpe_daily": agg_sharpe_daily,
-            "max_drawdown": max_drawdown(net),
-            "hit_rate": hit_rate(net, run["has_positions"]),
-            "turnover_annualized": float(run["turnover"].mean()) * config.ANNUALIZATION_DAYS,
-            "mean_daily_return": float(net.mean()),
-            "std_daily_return": float(net.std(ddof=1)),
-            "skew": g3,
-            "kurtosis_raw": g4,
-        },
-        "folds": folds,
-        "referee_inputs": {
-            "n_trials": n_trials,
-            "trial_sharpes_daily": trial_sharpes,
-            "deflated_sharpe": dsr,
-        },
-        "status": "ok",
-    }
+    source = (hyp_dir / "signal.py").read_text()
+    params = validate_signal_source(source)
+    blocks = validate_hypothesis_md((hyp_dir / "hypothesis.md").read_text())
+    history = read_json(hyp_dir / "iterations.json")
+    iteration = history[-1]["iteration"]
+    validate_iteration(blocks, {"iteration": iteration, "params": params,
+                                "iteration_history": history})
+    if data_dir.resolve() != (repo_root / "data" / "train_val").resolve() or data_dir.is_symlink():
+        raise EngineError("only local data/train_val is permitted")
+    manifest = data_manifest_sha256(data_dir)
+    identity = input_identity(repo_root, hypothesis_id, params, iteration, manifest)
+    commit = git(repo_root, "rev-parse", "HEAD")
+    journal = TrialJournal(repo_root)
+    with journal.writer():
+        verify_journal_committed(repo_root)
+        accounting = journal.accounting()
+        if accounting["pending_attempts"]:
+            raise EngineError("unresolved trial attempts require human reconciliation")
+        verify_prior_iterations(journal, identity)
+        start = journal.start(identity, commit)
+        try:
+            module = _load_signal_module(hyp_dir / "signal.py")
+            if module.PARAMS != params:
+                raise EngineError("executed parameters differ from pre-registration")
+            universe = read_json(repo_root / "data" / "universe.json")
+            symbols = [coin["symbol"] for coin in universe["coins"]]
+            panel = load_panel(data_dir, expected_symbols=symbols)
+            if panel.index.get_level_values("date").max() > config.AGGREGATE_END:
+                raise EngineError("train_val contains dates beyond the development cutoff")
+            from engine.harness import run_full_harness
+            run_full_harness(module.compute_signal, panel)
+            score_signal = fresh_signal_callable(hyp_dir / "signal.py", params)
+            run = run_walkforward(panel, score_signal,
+                                  config.AGGREGATE_START, config.AGGREGATE_END,
+                                  mode="delayed_close_v2", membership=universe.get("membership"))
+            if data_manifest_sha256(data_dir) != manifest:
+                raise EngineError("dataset changed during evaluation")
+            aggregate, folds = summarize(run)
+            artifact = {"identity": identity, "harness_passed": True, "aggregate": aggregate,
+                        "folds": folds, "daily": daily_records(run)}
+            receipt = journal.finish(start, artifact)
+        except Exception as exc:
+            journal.fail(start, f"{type(exc).__name__}: {exc}".splitlines()[0][:300])
+            raise
+        accounting = journal.accounting()
+        dsr = deflated_sharpe_from_moments(
+            aggregate["sharpe_daily"], aggregate["n_days"], aggregate["skew"],
+            aggregate["kurtosis_raw"], accounting["n_trials"],
+            accounting["trial_sharpes_daily"], variance_floor=1/(aggregate["n_days"]-1))
+        return {
+            "protocol": POLICY, "hypothesis_id": hypothesis_id, "iteration": iteration,
+            "params": params, "iteration_history": history,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "engine": {"git_commit": commit, "data_manifest_sha256": manifest},
+            "execution_mode": "delayed_close_v2", "cost_bps_per_side": 25,
+            "aggregate": aggregate, "folds": folds,
+            "referee_inputs": {**accounting, "deflated_sharpe": dsr},
+            "evidence": {"trial_id": start["trial_id"], "journal_head": receipt["sha256"]},
+            "status": "ok",
+        }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -158,12 +140,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", default=".")
     args = parser.parse_args(argv)
 
+    import re
+    if not re.fullmatch(r"H\d{3,}", args.hypothesis):
+        parser.error("invalid hypothesis identifier")
     repo_root = Path(args.repo_root).resolve()
     # R2: the ONLY data source is <repo-root>/data/train_val. Deliberately
     # not overridable — no flag may point S3 at another dataset.
     data_dir = repo_root / "data" / "train_val"
     ledger_path = repo_root / "LEDGER.md"
     out_path = repo_root / "hypotheses" / args.hypothesis / "results.json"
+
+    if out_path.exists():
+        from engine.trials import read_json
+        existing = read_json(out_path)
+        if existing.get("protocol") != "quantlab-v2":
+            raise EngineError("refusing to overwrite historical results; use a new hypothesis")
 
     try:
         results = build_results(args.hypothesis, repo_root, data_dir, ledger_path)

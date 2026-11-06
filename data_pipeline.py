@@ -10,8 +10,8 @@ Changes from v1 (and why):
 - New source: Coinbase Exchange public API (no key, US-accessible, full
   history via pagination).
 - New universe method: rank by MEDIAN DAILY DOLLAR VOLUME over the first 90
-  days of the sample. Anti-survivorship property preserved (ranking uses
-  2022 activity, not today's). Stated limitation: coins delisted from
+  days of the sample. Ranking uses 2022 activity but the candidate pool is survivor-biased.
+  This is NOT historical membership reconstruction: coins delisted from
   Coinbase since then are absent.
  
 Run in order:
@@ -85,8 +85,8 @@ def _fetch_full_history(ex, market: str, since_ms: int) -> pd.DataFrame:
 def cmd_download_all(start: str, exchange_id: str = "coinbaseexchange") -> None:
     """Download daily OHLCV for EVERY active USD spot pair. The universe is
     selected afterward from this pool, using volume measured AT SAMPLE START,
-    which is what makes the selection point-in-time rather than survivorship-
-    biased toward today's winners."""
+    but active-market filtering still introduces survivorship bias. The
+    ranking is only knowable after the full ranking window has ended."""
     import ccxt
  
     ex = getattr(ccxt, exchange_id)({"enableRateLimit": True})
@@ -153,7 +153,9 @@ def cmd_universe(start: str, window_days: int = 90, top_n: int = 50) -> None:
             (ALL / f"{c['symbol']}.parquet").read_bytes())
  
     out = {
-        "as_of": start,
+        "as_of": str(window_end.date()),
+        "sample_start": start,
+        "universe_history": "current-active-market-survivor-pool",
         "built_at": datetime.now(timezone.utc).isoformat(),
         "method": f"top-{top_n} by median daily dollar volume over first "
                   f"{window_days} days of sample; must be listed within 30 "
@@ -172,8 +174,8 @@ def cmd_universe(start: str, window_days: int = 90, top_n: int = 50) -> None:
  
  
 def cmd_split(cutoff: str) -> None:
-    """Physically separate holdout. After this, MOVE data/holdout outside the
-    repo. The overnight loop must be unable to peek, not told not to."""
+    """Human-only preparation. Protected data stays inside the project root;
+    autonomous sessions must mount only the separate working subtree."""
     cut = _utc(cutoff)
     TRAIN.mkdir(parents=True, exist_ok=True)
     HOLDOUT.mkdir(parents=True, exist_ok=True)
@@ -184,8 +186,8 @@ def cmd_split(cutoff: str) -> None:
         df = pd.read_parquet(f)
         df[df.index < cut].to_parquet(TRAIN / f.name)
         df[df.index >= cut].to_parquet(HOLDOUT / f.name)
-    print(f"Split {len(files)} files at {cutoff}. NOW run:")
-    print("  mv data/holdout ~/quantlab_holdout_DO_NOT_MOUNT")
+    print(f"Split {len(files)} files at {cutoff}. Human must place protected data")
+    print("in the project holdout sibling, outside autonomous working/mount scope.")
  
  
 if __name__ == "__main__":

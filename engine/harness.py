@@ -57,8 +57,14 @@ class SignalContractError(EngineError):
 
 
 def _call(compute_signal, panel: pd.DataFrame) -> pd.Series:
+    # A generated signal never receives the trusted caller's panel object.
+    # Idempotent mutation is still a contract violation, not "determinism".
+    visible = panel.copy(deep=True)
     with forbid_io():
-        return compute_signal(panel)
+        result = compute_signal(visible)
+    if not visible.equals(panel):
+        raise SignalContractError("signal mutated its input panel")
+    return result
 
 
 def _cross_section(sig: pd.Series, date) -> pd.Series:

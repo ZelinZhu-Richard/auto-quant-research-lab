@@ -7,6 +7,9 @@ write access to the tree. Iterations never call an LLM: the pre-registered
 grid point is patched into signal.py's single PARAMS line mechanically.
 """
 
+from engine.trials import strict_loads
+from engine.errors import EngineError
+
 import ast
 import json
 import re
@@ -14,13 +17,44 @@ import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NoReturn
 
-from orchestrator import prompts
 from orchestrator.cli_runner import CliResult, ToolCallLog, run_logged
 
 
 class StageFailure(Exception):
     """Mid-cycle failure => KILLED(reason=infrastructure), loop continues (R4)."""
+
+
+class QuotaExhausted(Exception):
+    """Quota/rate-limit exhaustion reported by either CLI — RUN-HALTING,
+    never an R4 infra-kill (the loop converts it to QuotaHalt)."""
+
+
+# Quota-shaped failure text from either CLI: HTTP 429, "usage limit",
+# "quota", rate-limit phrasing. The 429 match refuses digit/dot
+# neighbours so metric fragments like "0.429" or token counts like
+# "1429" in an error tail cannot trip it.
+QUOTA_ERROR_RE = re.compile(
+    r"(?i)(?<![\d.])429(?![\d.])"
+    r"|usage[ _-]?limit"
+    r"|quota"
+    r"|rate[ _-]?limit"
+)
+
+
+def _raise_cli_failure(message: str) -> NoReturn:
+    """Single exit for failed CLI calls: quota-shaped text halts the RUN
+    (QuotaExhausted), anything else is an R4 infra-kill (StageFailure).
+    Rationale for the split: the quota pool is SHARED with unrelated
+    workloads on the same accounts, so exhaustion can arrive mid-run from
+    OUTSIDE this system regardless of in-loop budgeting — kill-and-
+    continue exists for one broken hypothesis, not a dead upstream, and
+    without the halt an external drain burns every remaining cycle as
+    identical kills."""
+    if QUOTA_ERROR_RE.search(message):
+        raise QuotaExhausted(message)
+    raise StageFailure(message)
 
 
 # Model identity is the most consequential experimental variable, and the
@@ -32,8 +66,13 @@ class StageFailure(Exception):
 S2_CODEX_MODEL = "gpt-5.6-sol"
 S2_CODEX_EFFORT = "xhigh"
 S4_CODEX_MODEL = "gpt-5.6-terra"  # referee: obedience, not capability
-# NOTE: S4 reasoning effort is deliberately NOT pinned (the directive named
-# only the model); it still inherits from the mounted config — see BACKLOG.
+# S4 effort pinned to the FLOOR by arbitration decision 2026-07-12: the
+# referee is deliberately MINIMUM-effort — determinism and recorded
+# identity over capability; its job is mechanical comparison, not
+# thinking. "none" verified as the lowest server-accepted value for this
+# model (enum from the server error message; live-probed OK), since
+# auth-only seeding means no config value exists to inherit.
+S4_CODEX_EFFORT = "none"
 
 
 @dataclass
@@ -86,6 +125,33 @@ def _strip_fences(text: str) -> str:
     return match.group(1).strip() if match else text
 
 
+def _output_tail(result: CliResult, limit: int = 300) -> str:
+    """Failure excerpt = TAIL of combined stdout+stderr. Fatal errors are
+    the last thing a process says; taking the head buried
+    minirun_20260712's 'Read-only file system' fatal behind a benign
+    PATH-aliases warning."""
+    combined = ((result.stdout or "") + (result.stderr or "")).strip()
+    return combined[-limit:]
+
+
+def _claude_failure_detail(result: CliResult, limit: int = 300) -> str:
+    """claude -p reports failures as JSON on STDOUT (the `result` field);
+    stderr is typically empty — minirun_20260712's S1 kills read
+    'claude exited 1:' with nothing after the colon. Prefer the parsed
+    result text, fall back to the combined tail. Valid-but-non-object
+    JSON (`[]`, a bare string, a number) must fall through, never
+    AttributeError (gate arbitration 2026-07-12, finding 1)."""
+    try:
+        payload = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        payload = None
+    if isinstance(payload, dict):
+        detail = str(payload.get("result", "")).strip()
+        if detail:
+            return detail[-limit:]
+    return _output_tail(result, limit)
+
+
 class LiveLlm:
     """Real CLI calls. Flags were verified against `claude --help` /
     `codex --help` at setup time and are re-verified by loop preflight."""
@@ -113,17 +179,36 @@ class LiveLlm:
             stage=stage,
             stdin_text=prompt,
         )
-        if result.timed_out or result.exit_code != 0:
-            raise StageFailure(
-                f"{stage}: claude exited {result.exit_code}"
-                f"{' (timeout)' if result.timed_out else ''}: {result.stderr[:300]}"
-            )
+        # Parse and ACCOUNT FIRST: a failed call still bills (SPEC §12
+        # cost ceiling) — the payload carries total_cost_usd even when the
+        # call errored, and every invocation counts as a call.
+        payload = None
         try:
-            payload = json.loads(result.stdout)
-            text = payload["result"]
-            self.usage.add_claude(payload.get("total_cost_usd"))
-        except (json.JSONDecodeError, KeyError) as exc:
-            raise StageFailure(f"{stage}: unparseable claude output: {exc}") from exc
+            parsed = json.loads(result.stdout)
+            if isinstance(parsed, dict):  # `[]` etc. must not AttributeError
+                payload = parsed
+        except json.JSONDecodeError:
+            payload = None
+        self.usage.add_claude(payload.get("total_cost_usd") if payload else None)
+
+        if result.timed_out or result.exit_code != 0:
+            _raise_cli_failure(
+                f"{stage}: claude exited {result.exit_code}"
+                f"{' (timeout)' if result.timed_out else ''}: "
+                f"{_claude_failure_detail(result)}"
+            )
+        if payload is None:
+            _raise_cli_failure(
+                f"{stage}: claude stdout is not a JSON object: "
+                f"{_output_tail(result)}")
+        if payload.get("is_error"):
+            # zero-exit error payload: must never flow into an artifact
+            _raise_cli_failure(
+                f"{stage}: claude reported is_error: "
+                f"{str(payload.get('result', ''))[-300:]}")
+        if "result" not in payload:
+            raise StageFailure(f"{stage}: claude payload lacks a result field")
+        text = payload["result"]
         # model audit: claude is not pinned by flag; record what the CLI
         # reports it actually used (modelUsage keys in the JSON payload)
         reported = payload.get("modelUsage")
@@ -163,9 +248,10 @@ class LiveLlm:
             tokens = int(match.group(1).replace(",", ""))
         self.usage.add_codex(tokens)
         if result.timed_out or result.exit_code != 0:
-            raise StageFailure(
+            _raise_cli_failure(
                 f"{stage}: codex exited {result.exit_code}"
-                f"{' (timeout)' if result.timed_out else ''}: {result.stderr[:300]}"
+                f"{' (timeout)' if result.timed_out else ''}: "
+                f"{_output_tail(result)}"
             )
         if not out_file.exists():
             raise StageFailure(f"{stage}: codex produced no output file")
@@ -181,8 +267,8 @@ def validate_hypothesis_md(text: str) -> dict:
     if len(blocks) < 3:
         raise StageFailure(f"hypothesis.md has {len(blocks)} JSON blocks, need 3")
     try:
-        params, grid, criteria = (json.loads(b) for b in blocks[:3])
-    except json.JSONDecodeError as exc:
+        params, grid, criteria = (strict_loads(b) for b in blocks[:3])
+    except (json.JSONDecodeError, EngineError) as exc:
         raise StageFailure(f"hypothesis.md JSON block unparseable: {exc}") from exc
     if not isinstance(params, dict) or not params:
         raise StageFailure("Parameters block must be a non-empty dict")
@@ -193,7 +279,13 @@ def validate_hypothesis_md(text: str) -> dict:
     required = {"min_sharpe", "max_drawdown", "min_hit_rate", "min_sign_consistent_folds"}
     if not isinstance(criteria, dict) or set(criteria) != required:
         raise StageFailure(f"Kill criteria keys must be exactly {sorted(required)}")
-    return {"params": params, "grid": grid, "criteria": criteria}
+    blocks = {"params": params, "grid": grid, "criteria": criteria}
+    from engine.policy import validate_registration
+    try:
+        validate_registration(blocks)
+    except EngineError as exc:
+        raise StageFailure(str(exc)) from exc
+    return blocks
 
 
 def validate_signal_source(source: str) -> dict:
@@ -231,10 +323,12 @@ def patch_params_line(signal_path: Path, new_params: dict) -> None:
 
 def validate_decision(text: str, declared_grid: list[dict],
                       iteration_history: list[dict],
-                      expected_referee_model: str) -> dict:
+                      expected_referee_model: str, *,
+                      trusted_results: dict | None = None,
+                      hypothesis_blocks: dict | None = None) -> dict:
     try:
-        decision = json.loads(text)
-    except json.JSONDecodeError as exc:
+        decision = strict_loads(text)
+    except (json.JSONDecodeError, EngineError) as exc:
         raise StageFailure(f"decision.json unparseable: {exc}") from exc
     if not isinstance(decision, dict):
         raise StageFailure("decision.json must be a JSON object")
@@ -288,6 +382,19 @@ def validate_decision(text: str, declared_grid: list[dict],
         raise StageFailure(
             f"{decision['decision']} must have iterate_params=null, "
             f"got {decision.get('iterate_params')}")
+    if trusted_results is None or hypothesis_blocks is None:
+        raise StageFailure("binding decision requires trusted metric evidence")
+    from engine.policy import decide
+    from engine.trials import canonical
+    try:
+        expected = decide(hypothesis_blocks, trusted_results)
+    except EngineError as exc:
+        raise StageFailure(str(exc)) from exc
+    if declared_grid != hypothesis_blocks["grid"] or iteration_history != trusted_results["iteration_history"]:
+        raise StageFailure("inconsistent supplied iteration context")
+    for key in ("hypothesis_id", "iteration", "decision", "kill_reason", "criteria", "iterate_params"):
+        if canonical(decision[key]) != canonical(expected[key]):
+            raise StageFailure(f"decision.{key} contradicts deterministic policy")
     return decision
 
 
@@ -295,9 +402,8 @@ def run_hypothesis_tests(log: ToolCallLog, repo_root: Path, hypothesis_id: str,
                          timeout_s: int) -> CliResult:
     return run_logged(
         log,
-        ["env", f"QUANTLAB_HYPOTHESIS={hypothesis_id}",
-         "uv", "run", "pytest", "tests/hypothesis_harness.py", "-q",
-         "--no-header", "-x"],
+        ["uv", "run", "python", "-m", "engine.run_harness",
+         "--hypothesis", hypothesis_id, "--repo-root", str(repo_root)],
         cwd=repo_root,
         timeout_s=timeout_s,
         stage="S2-tests",

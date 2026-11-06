@@ -1,0 +1,84 @@
+{
+  "hypothesis_id": "H001",
+  "iteration": 0,
+  "params": {
+    "lookback_days": 90,
+    "skip_days": 7
+  },
+  "iteration_history": [
+    {
+      "iteration": 0,
+      "params": {
+        "lookback_days": 90,
+        "skip_days": 7
+      }
+    }
+  ],
+  "generated_at": "2026-07-11T16:53:43.979009+00:00",
+  "engine": {
+    "git_commit": "710e8b044f72dbef95888c79ecf27b36415a2ab7",
+    "data_manifest_sha256": "885599371d82fa70ed4f1faf4b9fba6d8857aca4cbb53b7ccebc7a1ad90b1a3b"
+  },
+  "cost_bps_per_side": 25,
+  "aggregate": {
+    "start": "2022-11-01",
+    "end": "2025-06-30",
+    "n_days": 973,
+    "n_position_days": 973,
+    "sharpe_annualized": -1.397395024149964,
+    "sharpe_daily": -0.07314299849486205,
+    "max_drawdown": 0.6032419110208322,
+    "hit_rate": 0.4830421377183967,
+    "turnover_annualized": 74.23792394655706,
+    "mean_daily_return": -0.0007551634638977341,
+    "std_daily_return": 0.010324480530433555,
+    "skew": -0.34489479029144765,
+    "kurtosis_raw": 7.432463161421103
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "start": "2022-11-01",
+      "end": "2023-06-30",
+      "n_days": 242,
+      "sharpe_annualized": -0.8465694993167526,
+      "max_drawdown": 0.23215194241130888,
+      "hit_rate": 0.49173553719008267
+    },
+    {
+      "fold": 2,
+      "start": "2023-07-01",
+      "end": "2024-02-29",
+      "n_days": 244,
+      "sharpe_annualized": 1.020540734280648,
+      "max_drawdown": 0.10439013185056889,
+      "hit_rate": 0.5409836065573771
+    },
+    {
+      "fold": 3,
+      "start": "2024-03-01",
+      "end": "2024-10-31",
+      "n_days": 245,
+      "sharpe_annualized": -2.7722550085443123,
+      "max_drawdown": 0.3174152842717749,
+      "hit_rate": 0.42857142857142855
+    },
+    {
+      "fold": 4,
+      "start": "2024-11-01",
+      "end": "2025-06-30",
+      "n_days": 242,
+      "sharpe_annualized": -2.604197864475414,
+      "max_drawdown": 0.3777349174364274,
+      "hit_rate": 0.47107438016528924
+    }
+  ],
+  "referee_inputs": {
+    "n_trials": 1,
+    "trial_sharpes_daily": [
+      -0.07314299849486205
+    ],
+    "deflated_sharpe": 0.01073639878348931
+  },
+  "status": "ok"
+}

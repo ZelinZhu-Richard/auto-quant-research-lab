@@ -7,7 +7,7 @@ commit: its toolcall logger records every subprocess call including its
 own git commits, so it cannot capture its own last act. Every committed
 launcher therefore runs, after this process exits:
 
-    git add runs/ STATE.md && git commit -m "run <id>: toolcall log finalized" -- runs/ STATE.md
+    git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/ && git commit -m "run <id>: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/
 
 (unlogged by construction, pathspec-limited so nothing pre-staged rides
 along; SPEC §12's local commit at hard stop is satisfied at the launcher
@@ -26,6 +26,7 @@ Sequences S1->S5 per PROJECT_BRIEF §4 / SPEC §14 with:
 """
 
 import argparse
+import contextlib
 import json
 import re
 import sys
@@ -38,9 +39,9 @@ from orchestrator.cli_runner import ToolCallLog, run_logged
 from orchestrator.stages import (
     S2_CODEX_EFFORT,
     S2_CODEX_MODEL,
-    S4_CODEX_MODEL,
     LiveLlm,
     LlmUsage,
+    QuotaExhausted,
     StageFailure,
     StageTimeouts,
     patch_params_line,
@@ -53,9 +54,10 @@ from orchestrator.stages import (
 
 # Paths the loop must never modify (R5 + frozen/human-only files).
 PROTECTED_PREFIXES = ("engine/", "orchestrator/", "data/", "tests/", "templates/",
-                      "scripts/", "docker-compose")
+                      "scripts/", "docs/", "docker-compose")
 PROTECTED_FILES = ("Dockerfile", "pyproject.toml", "uv.lock", "SPEC.md",
-                   "PROJECT_BRIEF.md", "BACKLOG.md", "SETUP_NOTES.md",
+                   "PROJECT_BRIEF.md", "BACKLOG.md", "SETUP_NOTES.md", "SPEC_v2.md",
+                   "trial_evidence/legacy_inventory.json", "protocol_approval.json",
                    "data_pipeline.py", "conftest.py", ".gitignore")
 
 
@@ -63,8 +65,29 @@ class HardStop(Exception):
     """Clean halt: write diagnosis to STATE.md, commit, exit 0."""
 
 
+class QuotaHalt(HardStop):
+    """Quota/rate-limit exhaustion halt — kept distinct from ordinary hard
+    stops (stage "halted (quota-exhausted)" in STATE.md, halt_class
+    "quota-exhausted" in summary.json) so the morning review can tell a
+    dead upstream from a run that finished its work."""
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _squeeze(text: str, limit: int) -> str:
+    """One-line middle-ellipsis for fixed-width diagnostic slots (STATE.md
+    line, commit title, console). Failure text carries the stage prefix at
+    the HEAD and the fatal line at the TAIL — plain head-slicing buried
+    minirun_20260712's fatal error behind a benign warning, so keep both
+    ends and drop the middle."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    head = max(10, limit // 4)
+    tail = limit - head - 1
+    return text[:head] + "…" + text[-tail:]
 
 
 class Loop:
@@ -84,6 +107,7 @@ class Loop:
         self.timeouts = StageTimeouts()
         self.consecutive_infra = 0
         self.cycles_done = 0
+        self._ledger_written = False
         self.llm = LiveLlm(self.log, repo_root, self.timeouts, self.usage) \
             if mode == "live" else None
         self.phase = "overnight" if mode == "live" else "dry-run"
@@ -119,8 +143,10 @@ class Loop:
 
     def _commit(self, message: str) -> None:
         self._guard_protected_paths()
-        run_logged(self.log, ["git", "add", "-A"], cwd=self.repo_root,
-                   timeout_s=120, stage="git")
+        added = run_logged(self.log, ["git", "add", "-A"], cwd=self.repo_root,
+                           timeout_s=120, stage="git")
+        if added.exit_code != 0:
+            raise HardStop("git add failed; refusing a partial evidence commit")
         result = run_logged(self.log, ["git", "commit", "-m", message],
                             cwd=self.repo_root, timeout_s=120, stage="git")
         if result.exit_code != 0 and "nothing to commit" not in result.stdout:
@@ -151,13 +177,33 @@ class Loop:
             print("FATAL: data/holdout exists inside the repo. R2 requires it "
                   "physically absent. STOPPING — alert the human.", file=sys.stderr)
             raise SystemExit(2)
-        for required in ("SPEC.md", "LEDGER.md", "templates/hypothesis.md",
+        for required in ("SPEC.md", "SPEC_v2.md", "LEDGER.md", "templates/hypothesis.md",
                          "templates/memo.md"):
             if not (self.repo_root / required).exists():
                 raise SystemExit(f"preflight: missing {required}")
+        from engine.trials import TrialJournal
+        from engine.errors import EngineError
+        try:
+            from engine.evidence import verify_journal_committed
+            verify_journal_committed(self.repo_root)
+            accounting = TrialJournal(self.repo_root).accounting()
+            if accounting["pending_attempts"]:
+                raise EngineError("unresolved trial attempts require human reconciliation")
+        except EngineError as exc:
+            raise SystemExit(f"preflight trial evidence: {exc}") from exc
         if not (self.repo_root / "data" / "train_val").exists():
             raise SystemExit("preflight: data/train_val missing")
         if self.mode == "live":
+            # Approval applies to this exact amendment; no implicit v1 approval reuse.
+            import hashlib
+            from engine.evidence import require_committed
+            try:
+                approval = json.loads(require_committed(self.repo_root, "protocol_approval.json"))
+                spec_hash = hashlib.sha256(require_committed(self.repo_root, "SPEC_v2.md")).hexdigest()
+                if approval.get("protocol") != "quantlab-v2" or approval.get("spec_sha256") != spec_hash or approval.get("approved_by_human") is not True:
+                    raise ValueError("approval does not match SPEC_v2")
+            except (OSError, ValueError, EngineError) as exc:
+                raise SystemExit("v2 live runs require committed human protocol approval") from exc
             # Verify CLI flags at runtime (PROJECT_BRIEF §8 / A5): the exact
             # flags this loop uses must appear in --help output.
             claude_help = run_logged(self.log, ["claude", "--help"],
@@ -179,6 +225,11 @@ class Loop:
                 if flag not in codex_help.stdout:
                     raise SystemExit(f"preflight: codex exec --help lacks {flag!r}")
 
+    def _spec_text(self):
+        return ((self.repo_root / "SPEC.md").read_text()
+                + "\n\nNORMATIVE AMENDMENT FOR THIS RUN:\n"
+                + (self.repo_root / "SPEC_v2.md").read_text())
+
     # ---------- stages ----------
 
     def _s1_hypothesize(self, hid: str, canned: dict | None) -> tuple[str, dict]:
@@ -189,7 +240,7 @@ class Loop:
             text = dryrun.render(canned["hypothesis_md"], hid=hid, ts=_now_iso())
         else:
             prompt = prompts.s1_hypothesize(
-                (self.repo_root / "SPEC.md").read_text(),
+                self._spec_text(),
                 (self.repo_root / "STATE.md").read_text(),
                 state.ledger_tail(self.repo_root),
                 template, hid,
@@ -212,7 +263,7 @@ class Loop:
             self._mock_log("S2", f"canned signal {canned['name']}")
             source = canned["signal_py"]
         else:
-            spec2 = (self.repo_root / "SPEC.md").read_text()
+            spec2 = self._spec_text()
             source = self.llm.codex_text(
                 prompts.s2_implement(spec2, hypothesis_md), "S2", self.timeouts.s2,
                 model=S2_CODEX_MODEL, effort=S2_CODEX_EFFORT)
@@ -234,7 +285,7 @@ class Loop:
             # single repair attempt (R4)
             source = self.llm.codex_text(
                 prompts.s2_implement(
-                    (self.repo_root / "SPEC.md").read_text(), hypothesis_md,
+                    self._spec_text(), hypothesis_md,
                     repair_context=(tests.stdout + tests.stderr)[-3000:],
                 ),
                 "S2-repair", self.timeouts.s2,
@@ -274,24 +325,23 @@ class Loop:
     def _s4_referee(self, hid: str, hypothesis_md: str, blocks: dict,
                     results: dict, canned: bool) -> dict:
         self._state(hid, "S4", iteration=results.get("iteration"))
-        if canned:
-            self._mock_log("S4", "mechanical referee")
-            # same validation path as live output — nothing bypasses it
-            decision = validate_decision(
-                json.dumps(dryrun.mechanical_referee(blocks, results)),
-                blocks["grid"], results["iteration_history"],
-                expected_referee_model="dry-run-mechanical-referee")
-        else:
-            results_text = json.dumps(results, indent=2)
-            text = self.llm.codex_text(
-                prompts.s4_referee((self.repo_root / "SPEC.md").read_text(),
-                                   hypothesis_md, results_text,
-                                   referee_model=f"codex {S4_CODEX_MODEL}"),
-                "S4", self.timeouts.s4, model=S4_CODEX_MODEL)
-            # R4: invalid referee output is a mid-cycle failure => infra-kill
-            decision = validate_decision(
-                text, blocks["grid"], results["iteration_history"],
-                expected_referee_model=f"codex {S4_CODEX_MODEL}")
+        from engine.evidence import verify_evidence
+        from engine.policy import decide, MODEL
+        from engine.errors import EngineError
+        try:
+            verify_evidence(self.repo_root, hid, results)
+            actual_card = (self.repo_root / "hypotheses" / hid / "hypothesis.md").read_text()
+            actual_blocks = validate_hypothesis_md(actual_card)
+            if actual_card != hypothesis_md or actual_blocks != blocks:
+                raise EngineError("referee registration differs from committed card")
+            decision = decide(actual_blocks, results)
+        except EngineError as exc:
+            raise StageFailure(f"S4 evidence rejected: {exc}") from exc
+        # No model can relabel the binding outcome. S5 can explain it.
+        decision = validate_decision(
+            json.dumps(decision), blocks["grid"], results["iteration_history"],
+            expected_referee_model=MODEL, trusted_results=results,
+            hypothesis_blocks=blocks)
         (self.repo_root / "hypotheses" / hid / "decision.json").write_text(
             json.dumps(decision, indent=2) + "\n", encoding="utf-8")
         self._commit(f"{hid}/S4: referee ({decision['decision']})")
@@ -323,15 +373,39 @@ class Loop:
         match = re.search(rf"#\s*{hid}\s*—\s*(\S+)", hypothesis_md)
         return match.group(1) if match else "unnamed"
 
+    def _verify_terminal_decision(self, hid, decision, results):
+        if decision.get("kill_reason") != "infrastructure":
+            from engine.evidence import verify_evidence, require_committed
+            from engine.policy import decide
+            from engine.trials import canonical
+            if results is None:
+                raise StageFailure("terminal decision has no evidence")
+            verify_evidence(self.repo_root, hid, results)
+            blocks = validate_hypothesis_md((self.repo_root / "hypotheses" / hid / "hypothesis.md").read_text())
+            expected = decide(blocks, results)
+            persisted = json.loads(require_committed(self.repo_root, f"hypotheses/{hid}/decision.json"))
+            if canonical(decision) != canonical(expected) or canonical(persisted) != canonical(expected):
+                raise StageFailure("terminal decision differs from authenticated policy")
+
     def _close_cycle(self, number: int, hid: str, name: str, decision: dict,
                      results: dict | None, tests_pass: bool,
                      iterations_run: int) -> None:
+        if decision.get("decision") == "PROMOTE" and not tests_pass:
+            raise StageFailure("promotion requires passing hypothesis tests")
+        self._verify_terminal_decision(hid, decision, results)
         agg = (results or {}).get("aggregate", {})
         ref = (results or {}).get("referee_inputs", {})
         label = {"PROMOTE": "PROMOTED", "KILL": f"KILLED({decision.get('kill_reason')})"}[
             decision["decision"]]
         if iterations_run > 0:
             label = f"ITERATED->{label}"
+        # one line per hypothesis is an INVARIANT, not bookkeeping: the
+        # historical ledger must keep exactly one terminal record per hypothesis. The flag
+        # is set BEFORE the append: if the write itself dies mid-flush a
+        # partial line may exist, so failure handling must halt rather
+        # than risk a second append (fail toward halting, never toward a
+        # corrupted N).
+        self._ledger_written = True
         line = state.append_ledger(
             self.repo_root, number, name, label,
             agg.get("sharpe_annualized"), ref.get("deflated_sharpe"),
@@ -358,17 +432,46 @@ class Loop:
                 f"date: {_now_iso()}\n\n## What broke\n\n{error[:1000]}\n\n"
                 f"(orchestrator-written memo; no merit judgment was made — R4)\n")
         (hyp_dir / "memo.md").write_text(memo)
+        # flag set BEFORE the append — same partial-write reasoning as
+        # _close_cycle: a mid-flush failure must halt, not append again
+        self._ledger_written = True
         state.append_ledger(self.repo_root, number, name,
                             "KILLED(infrastructure)", None, None, None, None,
                             tests_pass)
         self.consecutive_infra += 1
-        self._state(hid, "infra-killed", error=error[:200])
-        self._commit(f"{hid}: infra-kill — {error[:60]}")
-        print(f"  INFRA-KILL {hid}: {error[:120]}")
+        self._state(hid, "infra-killed", error=_squeeze(error, 200))
+        self._commit(f"{hid}: infra-kill — {_squeeze(error, 60)}")
+        print(f"  INFRA-KILL {hid}: {_squeeze(error, 160)}")
+
+    def _handle_cycle_failure(self, number: int, hid: str, name: str,
+                              error: str, tests_pass: bool) -> None:
+        """R4 kill-and-continue — UNLESS this hypothesis's ledger line may
+        already exist: then a second append would corrupt the terminal audit trail, so the run halts loudly instead. Before
+        halting, salvage-commit best-effort so a dirty LEDGER.md cannot be
+        swept into the next run's first commit (the launcher finalize also
+        stages LEDGER.md/PROMOTED_QUEUE.md as the backstop)."""
+        if self._ledger_written:
+            with contextlib.suppress(Exception):
+                self._commit(f"{hid}: ledger salvage — post-append failure")
+            raise HardStop(
+                f"post-ledger failure for {hid}: {error[:200]} — halting to "
+                "protect the one-line-per-hypothesis invariant")
+        try:
+            self._infra_kill(number, hid, name, error, tests_pass)
+        except HardStop:
+            raise
+        except Exception as exc:  # noqa: BLE001 — the handler itself died
+            with contextlib.suppress(Exception):
+                self._commit(f"{hid}: ledger salvage — infra-kill handler failed")
+            raise HardStop(
+                f"infra-kill handler itself failed for {hid}: "
+                f"{type(exc).__name__}: {exc} (original error: {error[:150]})"
+            ) from exc
 
     def run_cycle(self) -> None:
         number = state.next_hypothesis_number(self.repo_root)
         hid = f"H{number:03d}"
+        self._ledger_written = False
         canned = None
         if self.mode == "dry-run":
             canned = dryrun.CANNED[self.cycles_done % len(dryrun.CANNED)]
@@ -416,8 +519,27 @@ class Loop:
             self._close_cycle(number, hid, name, decision, results, tests_pass,
                               iterations_run)
             self.consecutive_infra = 0
+        except QuotaExhausted as exc:
+            # Quota/rate-limit exhaustion is RUN-HALTING, never an R4
+            # infra-kill: the quota pool is SHARED with unrelated
+            # workloads, so exhaustion can arrive mid-run from outside
+            # this system regardless of in-loop budgeting — kill-and-
+            # continue is for one broken hypothesis, not a dead upstream.
+            # Without the halt, an external drain burns every remaining
+            # cycle as identical kills. All LLM calls precede this
+            # cycle's ledger append, so no ledger line exists for this
+            # hid; like any hard stop, the id is reused by the next run.
+            raise QuotaHalt(f"QUOTA EXHAUSTED at {hid}: {exc}") from exc
         except StageFailure as exc:
-            self._infra_kill(number, hid, name, str(exc), tests_pass)
+            self._handle_cycle_failure(number, hid, name, str(exc), tests_pass)
+        except HardStop:
+            raise  # clean halt path (SPEC §12) — never converted to a kill
+        except Exception as exc:  # noqa: BLE001 — R4: ANY mid-cycle failure
+            # => KILLED(infrastructure) and the loop continues; an
+            # unexpected exception must not crash the overnight run
+            self._handle_cycle_failure(
+                number, hid, name,
+                f"unhandled {type(exc).__name__}: {exc}", tests_pass)
         self.cycles_done += 1
         # SPEC §12: a hard stop tripped between stages propagates as
         # HardStop out of run_cycle — STATE.md records the reason, the run
@@ -428,15 +550,19 @@ class Loop:
         self.preflight()
         self._state("none", "starting")
         halt_reason = "completed"
+        halt_class = "completed"
         try:
             while True:
                 self._check_hard_stops()
                 self.run_cycle()
         except HardStop as stop:
             halt_reason = str(stop)
+            halt_class = ("quota-exhausted" if isinstance(stop, QuotaHalt)
+                          else "hard-stop")
         summary = {
             "run_id": self.run_id, "mode": self.mode,
             "cycles": self.cycles_done, "halt_reason": halt_reason,
+            "halt_class": halt_class,
             "claude_cost_usd": round(self.usage.claude_cost_usd, 4),
             "codex_tokens": self.usage.codex_tokens,
             "llm_calls": self.usage.calls,
@@ -447,8 +573,10 @@ class Loop:
             "finished_at": _now_iso(),
         }
         (self.run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
-        state.write_state(self.repo_root, "idle", "none", "halted", None,
-                          halt_reason[:200], self.consecutive_infra)
+        state.write_state(self.repo_root, "idle", "none",
+                          "halted (quota-exhausted)"
+                          if halt_class == "quota-exhausted" else "halted",
+                          None, halt_reason[:200], self.consecutive_infra)
         # NO run-end commit here — deliberately. The toolcall logger records
         # every subprocess call including the orchestrator's own git
         # commits, so a commit made here would be described by log lines
@@ -457,7 +585,7 @@ class Loop:
         # next run's `git add -A` swept them into the wrong hypothesis's
         # first commit. The LAUNCHER (scripts/shakedown.sh, the compose
         # `lab` command) finalizes after this process exits:
-        #   git add runs/ STATE.md && git commit -m "run <id>: toolcall log finalized"
+        #   git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/ && git commit -m "run <id>: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/
         # That commit is unlogged by construction, so nothing escapes.
         # (SPEC §12's "commit locally" on hard stop is thereby satisfied at
         # the launcher level; STATE.md is included because the idle-state

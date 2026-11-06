@@ -35,13 +35,12 @@ def _decision(**overrides) -> dict:
     return base
 
 
-def test_valid_decisions_pass():
-    validate_decision(json.dumps(_decision()), GRID, HISTORY, PINNED)
-    validate_decision(json.dumps(_decision(
-        decision="PROMOTE", kill_reason=None)), GRID, HISTORY, PINNED)
-    validate_decision(json.dumps(_decision(
-        decision="ITERATE", kill_reason=None,
-        iterate_params={"lookback_days": 60})), GRID, HISTORY, PINNED)
+def test_schema_valid_decisions_require_metrics():
+    for candidate in [_decision(), _decision(decision="PROMOTE", kill_reason=None),
+                      _decision(decision="ITERATE", kill_reason=None,
+                                iterate_params={"lookback_days": 60})]:
+        with pytest.raises(StageFailure, match="trusted metric"):
+            validate_decision(json.dumps(candidate), GRID, HISTORY, PINNED)
 
 
 def test_missing_key_rejected():
@@ -93,20 +92,13 @@ def test_iterate_with_exhausted_grid_rejected():
 
 
 def test_mechanical_referee_passes_strict_validator():
-    blocks = validate_hypothesis_md(
-        dryrun.render(dryrun.CANNED[0]["hypothesis_md"], hid="H999", ts="t"))
-    results = {
-        "hypothesis_id": "H999", "iteration": 0, "generated_at": "t",
-        "iteration_history": [{"iteration": 0, "params": blocks["params"]}],
-        "aggregate": {"sharpe_annualized": -1.0, "max_drawdown": 0.5,
-                      "hit_rate": 0.4},
-        "folds": [{"sharpe_annualized": -1.0}] * 4,
-        "referee_inputs": {"deflated_sharpe": 0.01},
-    }
+    from tests.test_decision_policy import fixture
+    from engine.policy import MODEL
+    blocks, results = fixture(0)
     decision = dryrun.mechanical_referee(blocks, results)
-    validate_decision(json.dumps(decision), blocks["grid"],
-                      results["iteration_history"],
-                      expected_referee_model="dry-run-mechanical-referee")
+    validate_decision(json.dumps(decision), blocks["grid"], results["iteration_history"],
+                      expected_referee_model=MODEL, trusted_results=results,
+                      hypothesis_blocks=blocks)
 
 
 def test_hypothesis_md_validation():

@@ -1,0 +1,36 @@
+{
+  "analysis": "retrospective trial-count sensitivity; original v1 returns and moments",
+  "source_commits": [
+    "7528fb96257b3f84056563a966e1a959c5191e16",
+    "e3e8a3237aefed2389c507c0786a56b29c4c0162",
+    "cf20ab799e15d9a201f4702bbd4a083c9c96b6af"
+  ],
+  "settings": [
+    {
+      "lookback_days": 90,
+      "skip_days": 7
+    },
+    {
+      "lookback_days": 60,
+      "skip_days": 7
+    },
+    {
+      "lookback_days": 120,
+      "skip_days": 7
+    }
+  ],
+  "scores_daily": [
+    -0.07314299849486205,
+    -0.07190604045993973,
+    -0.04525104057410526
+  ],
+  "original_n_trials": 1,
+  "original_final_dsr": 0.07815576975893723,
+  "corrected_n_configurations": 3,
+  "trial_sharpe_variance": 0.0002483300667912103,
+  "expected_max_daily_sharpe": 0.013438912740225422,
+  "corrected_historical_formula_dsr": 0.03298780269897206,
+  "independent_calculation_dsr": 0.03298780269897206,
+  "decision": "KILL: negative Sharpe, excessive drawdown, hit-rate and DSR failures remain",
+  "limitations": "Three correlated settings are not three proven independent tests. No corrected execution returns or holdout results computed."
+}

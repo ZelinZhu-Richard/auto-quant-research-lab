@@ -80,16 +80,30 @@ def ledger_tail(repo_root: Path, n: int = 30) -> str:
 
 def next_hypothesis_number(repo_root: Path) -> int:
     path = repo_root / "LEDGER.md"
-    if not path.exists():
-        return 1
     numbers = [
         int(m.group(1))
-        for line in path.read_text(encoding="utf-8").splitlines()
+        for line in (path.read_text(encoding="utf-8").splitlines() if path.exists() else [])
         if (m := re.match(r"^#(\d+)\s*\|", line.strip()))
     ]
-    return (max(numbers) + 1) if numbers else 1
+    # Interrupted hypotheses reserve their ids permanently, even without a ledger line.
+    numbers += [int(p.name[1:]) for p in (repo_root / "hypotheses").glob("H*")
+                if p.is_dir() and re.fullmatch(r"H\d{3,}", p.name)]
+    return max(numbers, default=0) + 1
 
 
 def append_promoted(repo_root: Path, hypothesis_id: str, name: str) -> None:
+    import json
+    from engine.evidence import verify_evidence, require_committed
+    from engine.policy import decide
+    from engine.errors import EngineError
+    from engine.trials import canonical
+    from orchestrator.stages import validate_hypothesis_md
+    hyp = repo_root / "hypotheses" / hypothesis_id
+    results = json.loads(require_committed(repo_root, f"hypotheses/{hypothesis_id}/results.json"))
+    verify_evidence(repo_root, hypothesis_id, results)
+    expected = decide(validate_hypothesis_md((hyp / "hypothesis.md").read_text()), results)
+    actual = json.loads(require_committed(repo_root, f"hypotheses/{hypothesis_id}/decision.json"))
+    if expected["decision"] != "PROMOTE" or canonical(actual) != canonical(expected):
+        raise EngineError("promotion not authorized by committed evidence")
     with (repo_root / "PROMOTED_QUEUE.md").open("a", encoding="utf-8") as fh:
         fh.write(f"{hypothesis_id} | {name} | {_now()}\n")

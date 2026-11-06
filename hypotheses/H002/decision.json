@@ -1,0 +1,11 @@
+{
+  "hypothesis_id": "H002",
+  "iteration": null,
+  "decision": "KILL",
+  "kill_reason": "infrastructure",
+  "criteria": [],
+  "iterate_params": null,
+  "justification": "S1: claude exited 1: ",
+  "referee_model": "orchestrator",
+  "timestamp": "2026-07-12T03:17:47+00:00"
+}

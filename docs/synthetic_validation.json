@@ -1,0 +1,33 @@
+{
+  "label": "Toy fixtures only; no population false-positive guarantee",
+  "true_discoveries": 1,
+  "false_promotions": 0,
+  "rejections": 3,
+  "cases": [
+    {
+      "case": "positive",
+      "truth": "planted",
+      "decision": "PROMOTE",
+      "reason": "min_sharpe=35.88079055580169 required >= 1.0: True; max_drawdown=0.0017307023119154108 required <= 0.3: True; min_hit_rate=0.9875 required >= 0.5: True; stability=4 required >= 3: True; deflated_sharpe=1.0 required >= 0.95: True"
+    },
+    {
+      "case": "noise",
+      "truth": "null",
+      "decision": "KILL",
+      "reason": "min_sharpe=1.4417127288235385 required >= 1.0: True; max_drawdown=0.012879633632148946 required <= 0.3: True; min_hit_rate=0.55 required >= 0.5: True; stability=2 required >= 3: False; deflated_sharpe=0.7501503096811779 required >= 0.95: False"
+    },
+    {
+      "case": "selected_noise_winner",
+      "truth": "null",
+      "decision": "KILL",
+      "reason": "min_sharpe=2.7196238393751297 required >= 1.0: True; max_drawdown=0.020339473730160984 required <= 0.3: True; min_hit_rate=0.575 required >= 0.5: True; stability=3 required >= 3: True; deflated_sharpe=0.3005273211636016 required >= 0.95: False",
+      "n_trials": 16
+    },
+    {
+      "case": "future_return_oracle",
+      "truth": "misleading",
+      "decision": "REJECT",
+      "reason": "lookahead harness rejects future-dependent values"
+    }
+  ]
+}

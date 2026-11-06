@@ -36,16 +36,16 @@ fi
 echo "ok: pypi.org unreachable"
 
 echo "=== [3/3] dry-run in-container ==="
+# uniform launcher contract (no-op here: the dryrun service mounts no
+# credential seed — the acceptance run needs none)
+bash /workspace/scripts/seed_codex_home.sh || { echo "FAIL: seed script errored"; exit 1; }
 WORK=/tmp/dryrun
 rm -rf "$WORK"
-mkdir -p "$WORK"
-rsync -a --exclude '.git' --exclude '.venv' --exclude '__pycache__' \
-    --exclude 'runs' --exclude 'data' /workspace/ "$WORK/"
+# Preserve Git provenance for pre-registration and historical score verification.
+git clone --no-local /workspace "$WORK" || exit 1
 mkdir -p "$WORK/data"
-cp -r /workspace/data/train_val "$WORK/data/train_val"
-cp /workspace/data/universe.json /workspace/data/download_report.json "$WORK/data/" 2>/dev/null || true
-cd "$WORK"
-git init -q && git add -A && git commit -qm "in-container dry-run baseline"
+cp -r /workspace/data/train_val "$WORK/data/train_val" || exit 1
+cd "$WORK" || exit 1
 uv run python -m orchestrator.loop --mode dry-run --max-cycles 2 \
     --run-id container_dryrun
 STATUS=$?
@@ -55,9 +55,9 @@ STATUS=$?
 # STATE.md here, pathspec-limited, after the logger has exited.
 # Fail-closed: every git step's exit code is checked — a git failure must
 # never be mistaken for a clean tree.
-git add runs/ STATE.md || { echo "FAIL: finalize git add failed"; exit 1; }
-if ! git diff --cached --quiet -- runs/ STATE.md; then
-    git commit -qm "run container_dryrun: toolcall log finalized" -- runs/ STATE.md \
+git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/ || { echo "FAIL: finalize git add failed"; exit 1; }
+if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/; then
+    git commit -qm "run container_dryrun: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/ \
         || { echo "FAIL: finalize commit failed"; exit 1; }
 fi
 

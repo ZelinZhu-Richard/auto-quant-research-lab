@@ -3,7 +3,6 @@ fixed by PROJECT_BRIEF §5: SPEC.md + STATE.md + last 30 LEDGER lines +
 current hypothesis directory. Nothing else."""
 
 import re
-from pathlib import Path
 
 
 def _spec_sections(spec_text: str, wanted: tuple[str, ...]) -> str:

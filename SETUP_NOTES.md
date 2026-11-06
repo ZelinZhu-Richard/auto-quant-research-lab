@@ -136,6 +136,65 @@ pandas view (pandas 3.0.3):
   error; no repo artifact carried a wrong count (commit-message counts
   were accurate at their respective commits).
 
+## Container launch runbook (live runs — HUMAN-ONLY)
+
+Prereq once per shell: `export ANTHROPIC_API_KEY=sk-ant-...`
+
+Pre-run quota check (HUMAN, before every live run — added 2026-08-17):
+verify remaining Codex quota covers the run's WORST CASE — max
+hypotheses × the observed per-cycle codex usage (per-cycle tokens are
+in the last live run's summary.json and toolcalls.jsonl) — and do NOT
+launch into a quota window shared with other heavy workloads. The
+ChatGPT plan's pool is shared across unrelated projects (the 2026-08-17
+exhaustion was caused by a different project, not this lab), so an
+external drain can land mid-run regardless of in-loop budgeting. If it
+does, the orchestrator halts distinctly rather than burning cycles:
+stage `halted (quota-exhausted)` in STATE.md, `halt_class:
+"quota-exhausted"` in summary.json.
+
+Step 0 — ALWAYS rebuild BOTH images and redeploy the proxy first. The
+proxy is a persistent container (`docker compose run lab` reuses a
+running sidecar, so a filter change is not live until it is recreated),
+and a stale lab image lacks required init (e.g. the ~/.codex mount-point
+ownership) even when the repo is current:
+
+    docker compose build && docker compose up -d --force-recreate proxy
+
+Supervised mini-run (N cycles, 1h cap; the compose `lab` command is
+hard-wired for overnight, so a mini-run overrides it and must carry the
+same seed + finalize chain):
+
+    RUN_ID="minirun_$(date -u +%Y%m%d_%H%M%S)" docker compose run --rm \
+      -e RUN_ID -e ANTHROPIC_API_KEY \
+      -v quantlab_codex_home:/home/labuser/.codex \
+      -v "$HOME/.codex/auth.json:/home/labuser/.codex-seed/auth.json:ro" \
+      lab bash -c 'bash scripts/seed_codex_home.sh || exit 71; uv run python -m orchestrator.loop --mode live --run-id "$RUN_ID" --max-cycles 3 --wall-clock-hours 1; status=$?; git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md || exit 70; if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md; then git commit -m "run $RUN_ID: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md || exit 70; fi; exit $status'
+
+Full overnight run (uses the compose command as committed):
+
+    RUN_ID="overnight_$(date -u +%Y%m%d)" docker compose run --rm \
+      -e RUN_ID -e ANTHROPIC_API_KEY \
+      -v quantlab_codex_home:/home/labuser/.codex \
+      -v "$HOME/.codex/auth.json:/home/labuser/.codex-seed/auth.json:ro" lab
+
+Notes:
+- ONLY auth.json is mounted (read-only, staging path) — never the whole
+  host ~/.codex: personal config.toml would activate host plugin/notify/
+  MCP configuration in the unattended container, and both codex MODELS
+  and EFFORTS are pinned by orchestrator flags (S2 gpt-5.6-sol@xhigh,
+  S4 gpt-5.6-terra@none — arbitration decision 2026-07-12), recorded per
+  run in summary.json. Host ~/.codex is never mounted rw.
+- `quantlab_codex_home` is a named volume persisting the WRITABLE
+  in-container ~/.codex across --rm runs: OAuth refresh rotates tokens,
+  so the volume's refreshed state must survive and is preferred over the
+  host seed on later launches. After a host re-login, force a reseed with
+  `-e CODEX_SEED_FORCE=1`; to wipe container-side credentials entirely:
+  `docker volume rm quantlab_codex_home`.
+- Exit 71 = seeding failed; exit 70 = log finalization failed.
+- After the run: read git log + LEDGER before executing anything,
+  regenerate the README table (`uv run python scripts/ledger_stats.py`),
+  push.
+
 ## Canonical review-gate procedure (Section 8 interpretation — RATIFIED)
 
 Ratified by the human 2026-07-11, resolving the interpretation question
@@ -167,4 +226,15 @@ diff touching an R5 path).
    presupposes disagreement.
 5. **Empirical record from setup** (all converged, every FAIL round
    consisted of new legitimate findings): A1 3 rounds, A2 3, A3 7, A5 6,
-   A6 3, Gate-H amendment 2, launcher-finalize fix 3.
+   A6 3, Gate-H amendment 2, launcher-finalize fix 3. Post-minirun
+   hardening batch: 5 rounds, two arbitration halts (round 2, round 5).
+6. **Findings trailer (round-5 arbitration corrective, ruled
+   2026-08-17):** every gate-fix commit message ends with a trailer
+   block declaring which findings it addresses and exactly one of
+   `recurrence: none` or `recurrence: <finding> — HALTING` (standard
+   git trailers such as Co-Authored-By precede it). This converts
+   halt-on-recurrence from a memory-dependent rule into an
+   artifact-checked one: the author must decide the recurrence question
+   at commit time, and any reviewer can check the declaration against
+   the round history. A gate-fix commit missing the trailer, or one
+   declaring a recurrence without halting, is itself a finding.
