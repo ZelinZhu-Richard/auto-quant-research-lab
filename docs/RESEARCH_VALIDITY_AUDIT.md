@@ -60,7 +60,7 @@ commits as well as this audit's changes; review the entire range.
 ## Verification record
 
 - Baseline: **96 passed, 2 skipped** (training data absent in initial checkout).
-- Current full suite: **156 passed**, zero skipped after copying the explicitly
+- Current full suite: **157 passed**, zero skipped after copying the explicitly
   allowlisted train_val files. Command: `python -m pytest tests/ -q`.
 - Original H001 signal harness: **4 passed**, using only train_val; no H001
   backtest or historical score overwrite. Command:
@@ -138,3 +138,16 @@ The first reviewer could inspect source but its restricted runtime could not
 launch Git's developer-tools wrapper. It therefore did not claim a complete
 branch-diff review. The rerun grants read access to the installed Git toolchain
 (still no market data or other project access) to complete that verification.
+
+
+## Independent review round 2
+
+The reviewer verified all round-1 fixes and the unchanged historical artifacts,
+then reported one NEW finding: the stage timeout killed only the immediate
+harness wrapper, leaving pytest potentially running. `cli_runner.py` now gives
+each stage a process group, sends TERM then KILL to the group, and reaps the
+parent. `run_harness.py` handles TERM with a BaseException so Python's subprocess
+context kills/reaps pytest without fabricating a terminal trial result. The
+regression launches a TERM-ignoring child, verifies it is gone after the deadline,
+and verifies the durable unresolved attempt and released writer lock. No prior
+finding recurred.

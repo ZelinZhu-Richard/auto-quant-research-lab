@@ -5,6 +5,9 @@ appended to runs/<run_id>/toolcalls.jsonl: command, cwd, duration, exit code.
 This log is a first-class deliverable (Scutum raw material).
 """
 
+import contextlib
+import os
+import signal
 import json
 import subprocess
 import time
@@ -42,21 +45,39 @@ def run_logged(
 ) -> CliResult:
     started = time.time()
     timed_out = False
-    try:
-        proc = subprocess.run(
-            command,
-            cwd=cwd,
-            input=stdin_text,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-        )
-        exit_code, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
-    except subprocess.TimeoutExpired as exc:
-        exit_code = -1
-        stdout = (exc.stdout or b"").decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr = (exc.stderr or b"").decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-        timed_out = True
+    # Each stage gets a process group: uv/wrapper/pytest descendants inherit it.
+    # subprocess.run's default timeout only kills the immediate process and
+    # can even hang collecting pipes still held by orphaned descendants.
+    with subprocess.Popen(
+        command, cwd=cwd, stdin=subprocess.PIPE if stdin_text is not None else None,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        start_new_session=True,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate(input=stdin_text, timeout=timeout_s)
+            exit_code = proc.returncode
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                stdout, stderr = proc.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+                stdout, stderr = proc.communicate()
+            finally:
+                # A descendant may have closed its pipes and ignored TERM;
+                # kill the remaining group even if communicate already returned.
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            exit_code = -1
+        except BaseException:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            raise
     duration = time.time() - started
     log.append(
         {

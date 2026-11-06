@@ -7,6 +7,7 @@ slot. SIGKILL leaves a pending start and blocks further evaluation.
 import argparse
 import os
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -61,11 +62,19 @@ def run_registered_harness(root: Path, hid: str) -> int:
             raise
 
 
+def terminate_harness(signum, frame):
+    # subprocess.run catches BaseException, kills/reaps its pytest child, then
+    # propagates SystemExit. Do not append a terminal event: timeout is an
+    # unresolved attempt requiring reconciliation, not a fabricated test result.
+    raise SystemExit(128 + signum)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hypothesis", required=True)
     parser.add_argument("--repo-root", default=".")
     args = parser.parse_args()
+    signal.signal(signal.SIGTERM, terminate_harness)
     return run_registered_harness(Path(args.repo_root).resolve(), args.hypothesis)
 
 
