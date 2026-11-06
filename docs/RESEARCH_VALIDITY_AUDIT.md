@@ -74,11 +74,11 @@ commits as well as this audit's changes; review the entire range.
   synthetic data. They reject forged metrics/criteria/registration, stale or
   deleted receipts, changed code/data/card, missing marks, and unauthorized
   queue calls; verify exact replay and failed-attempt accounting.
-- Container acceptance on implementation `8624588`: read-only engine/data
+- Container acceptance on final implementation `1fa701f`: read-only engine/data
   checks and blocked pypi.org egress passed; two full mocked cycles completed,
   both KILL on merits, with a clean final Git tree. Existing locally built
   images were used (no dependency or model upgrade). Independent review gate
-  results will be appended after review.
+  returned PASS in round 3; see `reviews/round3.md`.
 
 ## Scientific limits and next-run requirements
 
@@ -151,3 +151,27 @@ context kills/reaps pytest without fabricating a terminal trial result. The
 regression launches a TERM-ignoring child, verifies it is gone after the deadline,
 and verifies the durable unresolved attempt and released writer lock. No prior
 finding recurred.
+
+
+## Final verification and disposition
+
+Round 3 returned **PASS**, with no NEW or RECURRENT findings, after reviewing
+`b494a06..1fa701f`. The reviewer verified the complete candidate and historical
+preservation; it did not rerun tests and does not claim otherwise. All three
+verdicts are retained in `reviews/`. Code is at `1fa701f`; subsequent changes
+only record verification documentation.
+
+Final checks: **157/157 default tests**, **4/4 separate H001 harness checks**,
+Ruff F, compileall, shell syntax, Compose validation and whitespace checks all
+passed. Final Docker acceptance also passed **3/3 checks** and completed two
+mocked full cycles (both merit kills, zero infrastructure kills), including
+registered harness attempts, immutable trial artifacts, per-stage commits and
+a clean finalized tree. The credential-free acceptance used existing local
+images. Its log is `container-acceptance-final.txt`; test summaries and
+`verification.json` record the exact candidate and archive checksum. The
+container evidence archive remains in the session's `workspace/` audit folder,
+separate from the original experiments. No live LLM research or human-only
+shakedown/holdout run was performed.
+
+Review and deployment are separate: this PR must not be merged automatically,
+and the human adoption/calibration/shakedown requirements above still apply.

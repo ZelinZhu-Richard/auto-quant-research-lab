@@ -1,0 +1,36 @@
+ Container quantlab-validity-audit-dryrun-run-1de31f4b88cb Creating
+ Container quantlab-validity-audit-dryrun-run-1de31f4b88cb Created
+=== [1/3] read-only mounts + R2 physical absence ===
+ok: engine/ write refused
+ok: data/ write refused
+ok: data/ contains EXACTLY train_val + audit JSONs (R2): download_report.json train_val universe.json
+=== [2/3] no package-registry egress ===
+ok: pypi.org unreachable
+=== [3/3] dry-run in-container ===
+Cloning into '/tmp/dryrun'...
+[2026-11-06T05:11:46+00:00] cycle 1: H008 (dry-run)
+  ledger: #8 | dry_momentum_90d | ITERATED->KILLED(merits) | sharpe=-0.7236 dsr=0.0063 dd=0.4556 hit=0.5046 | tests=pass
+[2026-11-06T05:12:05+00:00] cycle 2: H009 (dry-run)
+  ledger: #9 | dry_reversal_7d | ITERATED->KILLED(merits) | sharpe=-4.5181 dsr=0.0000 dd=0.9179 hit=0.3926 | tests=pass
+halt: max cycles (2) reached after 2 cycle(s)
+ok: working tree clean after launcher finalize
+--- ledger ---
+# LEDGER.md — append-only; one line per hypothesis; never edited, never reordered.
+# Format (SPEC §11):
+# #N | name | DECISION(reason) | sharpe=X dsr=Y dd=Z hit=W | tests=pass|fail
+#1 | xsec_momentum_skip_week | ITERATED->KILLED(merits) | sharpe=-0.8645 dsr=0.0782 dd=0.4681 hit=0.4902 | tests=pass
+#2 | unknown | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
+#3 | unknown | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
+#4 | unknown | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
+#5 | short_horizon_reversal | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
+#6 | vol_risk_premium_xsec | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
+#7 | xsec_amihud_illiquidity_premium | KILLED(infrastructure) | sharpe=nan dsr=nan dd=nan hit=nan | tests=fail
+#8 | dry_momentum_90d | ITERATED->KILLED(merits) | sharpe=-0.7236 dsr=0.0063 dd=0.4556 hit=0.5046 | tests=pass
+#9 | dry_reversal_7d | ITERATED->KILLED(merits) | sharpe=-4.5181 dsr=0.0000 dd=0.9179 hit=0.3926 | tests=pass
+--- commits ---
+d6b7832 run container_dryrun: toolcall log finalized
+0cce35e H009: ledger — ITERATED->KILLED(merits)
+8d14e71 H009/S5: memo
+bd1c0d1 H009/S4: referee (KILL)
+cf5372c H009/S3: backtest
+A6 ACCEPTANCE: all three checks passed
