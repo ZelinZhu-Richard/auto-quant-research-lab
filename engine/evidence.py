@@ -48,7 +48,8 @@ def require_committed(root: Path, path: str) -> bytes:
 
 
 def input_identity(
-    root: Path, hid: str, params: dict, iteration: int, data_hash: str
+    root: Path, hid: str, params: dict, iteration: int, data_hash: str, *,
+    uncommitted_signal: bool = False
 ) -> dict:
     if not re.fullmatch(r"H\d{3,}", hid):
         raise EngineError("invalid hypothesis id")
@@ -56,7 +57,7 @@ def input_identity(
     signal_path = f"hypotheses/{hid}/signal.py"
     card, signal = (
         require_committed(root, card_path),
-        require_committed(root, signal_path),
+        (root / signal_path).read_bytes() if uncommitted_signal else require_committed(root, signal_path),
     )
     # The first committed card is the pre-registration, not an editable later version.
     births = git(
@@ -68,8 +69,9 @@ def input_identity(
         root, "log", "--reverse", "--format=%H", "--diff-filter=A", "--", signal_path
     ).splitlines()
     normalize = lambda b: re.sub(rb"(?m)^PARAMS\s*=.*$", b"PARAMS = {}", b)
-    if len(signal_births) != 1 or normalize(signal) != normalize(
-        committed_bytes(root, signal_path, signal_births[0])
+    if not (uncommitted_signal and not signal_births) and (
+        len(signal_births) != 1 or normalize(signal) != normalize(
+            committed_bytes(root, signal_path, signal_births[0]))
     ):
         raise EngineError("signal logic changed after initial implementation")
     sources = ["SPEC_v2.md", "data/universe.json", "pyproject.toml", "uv.lock"]

@@ -37,6 +37,9 @@ def evaluated(tmp_path, monkeypatch):
             shutil.copyfile(path, root / directory / path.name)
     for file in ["SPEC_v2.md", "SPEC.md", "pyproject.toml", "uv.lock", ".gitignore"]:
         shutil.copyfile(SOURCE / file, root / file)
+    (root / "tests").mkdir()
+    shutil.copyfile(SOURCE / "tests/hypothesis_harness.py", root / "tests/hypothesis_harness.py")
+    shutil.copyfile(SOURCE / "conftest.py", root / "conftest.py")
     dates = pd.date_range("2023-01-03", periods=80, tz="UTC")
     monkeypatch.setattr(config, "AGGREGATE_START", dates[0])
     monkeypatch.setattr(config, "AGGREGATE_END", dates[-1])
@@ -203,3 +206,35 @@ def test_failed_evaluation_is_recorded_before_rejection(evaluated):
     assert accounting['unique_scored'] == 1
     assert accounting['pending_attempts'] == 0
     assert TrialJournal(root).events()[-1]['kind'] == 'failed'
+
+
+def test_harness_attempt_is_durable_before_child_execution(evaluated, monkeypatch):
+    from engine.run_harness import run_registered_harness
+    from types import SimpleNamespace
+    root, _, first = evaluated
+    def child(*args, **kwargs):
+        journal = TrialJournal(root)
+        assert journal.events()[-1]['phase'] == 'harness'
+        assert journal.accounting()['pending_attempts'] == 1
+        return SimpleNamespace(returncode=1)
+    # Patch only the subprocess called by the wrapper, preserving Git tools.
+    import engine.run_harness as runner
+    original = runner.subprocess.run
+    def dispatch(command, *args, **kwargs):
+        return child(command, *args, **kwargs) if '-m' in command else original(command, *args, **kwargs)
+    monkeypatch.setattr(runner.subprocess, 'run', dispatch)
+    assert run_registered_harness(root, 'H001') == 1
+    a = TrialJournal(root).accounting()
+    assert a['attempted'] == 2 and a['n_trials'] == 1
+    assert a['pending_attempts'] == 0
+    assert TrialJournal(root).events()[-1]['kind'] == 'failed'
+
+
+def test_actual_registered_harness_pass_has_no_additional_score(evaluated):
+    from engine.run_harness import run_registered_harness
+    root, _, result = evaluated
+    assert run_registered_harness(root, 'H001') == 0
+    a = TrialJournal(root).accounting()
+    assert a['attempted'] == 2 and a['n_trials'] == 1
+    assert a['successfully_scored_attempts'] == 1 and a['pending_attempts'] == 0
+    assert TrialJournal(root).events()[-1]['kind'] == 'checked'

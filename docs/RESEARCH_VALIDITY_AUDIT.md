@@ -60,7 +60,7 @@ commits as well as this audit's changes; review the entire range.
 ## Verification record
 
 - Baseline: **96 passed, 2 skipped** (training data absent in initial checkout).
-- Current full suite: **151 passed**, zero skipped after copying the explicitly
+- Current full suite: **156 passed**, zero skipped after copying the explicitly
   allowlisted train_val files. Command: `python -m pytest tests/ -q`.
 - Original H001 signal harness: **4 passed**, using only train_val; no H001
   backtest or historical score overwrite. Command:
@@ -119,3 +119,22 @@ attempt and append a matching failed reconciliation event (or reconstruct the
 exact scored receipt with evidence), then commit before resumption. Never edit,
 delete or silently complete a pending event. A retry with identical identity
 gets a new attempt ID and the same statistical slot.
+
+
+## Independent review round 1
+
+The restricted read-only Codex reviewer returned FAIL with three new findings:
+(1) S3 reused the full-panel harness's signal state; (2) the harness could mutate
+its caller's panel; (3) S2/repair/iteration harnesses executed before durable
+trial registration. All were accepted. Fixes reset signal module state for
+every scoring observation, isolate/copy harness inputs and reject mutation,
+and register every harness invocation through `engine/run_harness.py` with
+immutable tested source snapshots. New regressions reproduce cached future
+rankings, idempotent price mutation, and inspect the start event BEFORE the
+harness child is invoked. Failed checks retain their statistical configuration
+slot; successful checks do not fabricate a numeric score.
+
+The first reviewer could inspect source but its restricted runtime could not
+launch Git's developer-tools wrapper. It therefore did not claim a complete
+branch-diff review. The rerun grants read access to the installed Git toolchain
+(still no market data or other project access) to complete that verification.

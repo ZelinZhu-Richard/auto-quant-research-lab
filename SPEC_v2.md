@@ -26,7 +26,10 @@ holdout access. A human alone controls any later single-shot evaluation.
 
 `trial_evidence/events/` is an ordered SHA-256 chain of immutable start/terminal
 JSON events. A start is durably published before executing signal code or
-scoring. Every new configuration (including changed source, dataset or protocol)
+scoring, including every S2 harness, its one repair, and iteration checks.
+A `checked` terminal event means harness pass with no numeric score. Harness
+and S3 attempts with identical code/params/data share one statistical slot;
+repaired source is another configuration. Tested source snapshots are retained. Every new configuration (including changed source, dataset or protocol)
 counts. Identity includes hypothesis, iteration, parameters, card/signal/source
 and data hashes. Each attempt has a new UUID and timestamp. Exact replays have
 the same identity, one statistical slot, and must reproduce identical score
@@ -71,7 +74,9 @@ only. It is not admissible v2 promotion evidence.
 
 `delayed_close_v2` is a daily-bar research fill model: observe the completed
 UTC candle dated t; submit after it completes; simulate fill at the close of
-the candle dated t+1; first earn the close(t+1) to close(t+2) interval. Thus a
+the candle dated t+1; first earn the close(t+1) to close(t+2) interval. The harness receives defensive
+copies and rejects mutation. Scoring uses a fresh module namespace for EACH
+observation date, never the module that saw the full-panel harness. Thus a
 return day d uses signal observations through d-2, trades at close(d-1), and
 marks at close(d). There is a full candle between observation and assumed
 fill. Orders are modeled as target-NAV instructions with sizing at fill.

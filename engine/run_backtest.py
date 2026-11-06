@@ -42,6 +42,26 @@ def _load_signal_module(signal_path: Path):
     return module
 
 
+def fresh_signal_callable(signal_path: Path, expected_params: dict):
+    """Compile once outside guards, execute in a fresh namespace per date.
+
+    The full-panel validation module is NEVER used to score. Reinitializing
+    each call also prevents cross-date module caches from violating purity.
+    The caller wraps import and compute together in forbid_io.
+    """
+    code = compile(signal_path.read_text(encoding="utf-8"), str(signal_path), "exec")
+    def compute(visible):
+        namespace = {"__file__": str(signal_path), "__name__": "hypothesis_signal"}
+        exec(code, namespace)  # noqa: S102 — inside backtest's forbid_io
+        if namespace.get("PARAMS") != expected_params:
+            raise EngineError("executed parameters differ from pre-registration")
+        result = namespace["compute_signal"](visible)
+        if namespace.get("PARAMS") != expected_params:
+            raise EngineError("signal changed registered parameters during execution")
+        return result
+    return compute
+
+
 def build_results(hypothesis_id: str, repo_root: Path, data_dir: Path,
                   ledger_path: Path) -> dict:
     from engine.evidence import (input_identity, git, summarize, daily_records,
@@ -83,7 +103,8 @@ def build_results(hypothesis_id: str, repo_root: Path, data_dir: Path,
                 raise EngineError("train_val contains dates beyond the development cutoff")
             from engine.harness import run_full_harness
             run_full_harness(module.compute_signal, panel)
-            run = run_walkforward(panel, module.compute_signal,
+            score_signal = fresh_signal_callable(hyp_dir / "signal.py", params)
+            run = run_walkforward(panel, score_signal,
                                   config.AGGREGATE_START, config.AGGREGATE_END,
                                   mode="delayed_close_v2", membership=universe.get("membership"))
             if data_manifest_sha256(data_dir) != manifest:

@@ -402,9 +402,8 @@ def run_hypothesis_tests(log: ToolCallLog, repo_root: Path, hypothesis_id: str,
                          timeout_s: int) -> CliResult:
     return run_logged(
         log,
-        ["env", f"QUANTLAB_HYPOTHESIS={hypothesis_id}",
-         "uv", "run", "pytest", "tests/hypothesis_harness.py", "-q",
-         "--no-header", "-x"],
+        ["uv", "run", "python", "-m", "engine.run_harness",
+         "--hypothesis", hypothesis_id, "--repo-root", str(repo_root)],
         cwd=repo_root,
         timeout_s=timeout_s,
         stage="S2-tests",

@@ -111,7 +111,7 @@ class TrialJournal:
                 ):
                     raise EngineError("invalid trial start")
                 attempts[attempt] = event
-            elif event.get("kind") in ("scored", "failed"):
+            elif event.get("kind") in ("scored", "failed", "checked"):
                 start = attempts.get(attempt)
                 if (
                     not start
@@ -147,13 +147,14 @@ class TrialJournal:
         self.events()  # validate transition before returning authorization material
         return event
 
-    def start(self, identity: dict, git_commit: str) -> dict:
+    def start(self, identity: dict, git_commit: str, *, phase="backtest") -> dict:
         return self.append(
             "started",
             attempt_id=uuid.uuid4().hex,
             trial_id=digest(identity),
             identity=identity,
             git_commit=git_commit,
+            phase=phase,
         )
 
     def finish(self, start: dict, artifact: dict) -> dict:
@@ -166,6 +167,10 @@ class TrialJournal:
             score_daily=artifact["aggregate"]["sharpe_daily"],
             artifact_sha256=digest(artifact),
         )
+
+    def checked(self, start: dict) -> dict:
+        return self.append("checked", attempt_id=start["attempt_id"], trial_id=start["trial_id"],
+                           outcome="harness passed; no numeric score")
 
     def fail(self, start: dict, error: str) -> dict:
         return self.append(
