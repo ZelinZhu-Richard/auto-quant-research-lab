@@ -15,6 +15,7 @@ from engine.config import COST_PER_SIDE
 from engine.errors import EngineError
 from engine.io_guard import forbid_io
 from engine.portfolio import build_weights
+from engine.universe import eligible_symbols
 
 
 def _validate_signal_output(sig: object) -> pd.Series:
@@ -171,7 +172,6 @@ def run_walkforward(panel, compute_signal, start, end, *, mode="delayed_close_v2
                 raise EngineError("invalid signal index/values")
             cross = sig.xs(observation, level=0) if observation in sig.index.get_level_values(0) else pd.Series(dtype=float)
             if membership is not None:
-                from engine.universe import eligible_symbols
                 eligible = eligible_symbols(membership, observation)
                 cross = cross[cross.index.isin(eligible)]
             target = build_weights(cross, closes.loc[observation])

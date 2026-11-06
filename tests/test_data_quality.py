@@ -70,3 +70,15 @@ def test_invalid_bars_refused(tmp_path, column, value):
     f.to_parquet(tmp_path / "A.parquet")
     with pytest.raises(EngineError):
         load_panel(tmp_path)
+
+
+def test_membership_is_applied_at_observation_not_future_fill():
+    from engine.backtest import run_walkforward
+    from tests.test_execution_v2 import panel
+    from tests.test_known_answer import D0, D1, D2, toy_signal
+    # All assets become listed at D0: first observation (D0-1) is still empty.
+    records = [member(f'S{i:02d}', listed='2023-01-01T00:00:00Z') for i in range(15)]
+    run = run_walkforward(panel(), toy_signal, D1, D2, membership=records)
+    assert not run.loc[D1, 'has_positions']
+    assert run.loc[D1, 'r_net'] == 0
+    assert run.loc[D2, 'has_positions']

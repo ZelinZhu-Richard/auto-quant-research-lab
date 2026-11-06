@@ -53,7 +53,7 @@ explicit development directory; its manifest matches H001:
 No existing dataset was regenerated. The new fixtures are exact copies of the
 three Git result blobs, with original hashes in `trial_evidence/legacy_inventory.json`.
 
-The branch preserves 15 local safety/history commits above public `b494a06`
+The branch preserves 21 local safety/history commits above public `b494a06`
 without rewriting them. The full PR therefore includes those pre-existing
 commits as well as this audit's changes; review the entire range.
 
@@ -74,8 +74,11 @@ commits as well as this audit's changes; review the entire range.
   synthetic data. They reject forged metrics/criteria/registration, stale or
   deleted receipts, changed code/data/card, missing marks, and unauthorized
   queue calls; verify exact replay and failed-attempt accounting.
-- Container acceptance and independent gate results will be appended after
-  the committed implementation has been exercised and reviewed.
+- Container acceptance on implementation `8624588`: read-only engine/data
+  checks and blocked pypi.org egress passed; two full mocked cycles completed,
+  both KILL on merits, with a clean final Git tree. Existing locally built
+  images were used (no dependency or model upgrade). Independent review gate
+  results will be appended after review.
 
 ## Scientific limits and next-run requirements
 
