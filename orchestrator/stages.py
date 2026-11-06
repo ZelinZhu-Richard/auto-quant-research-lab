@@ -7,6 +7,9 @@ write access to the tree. Iterations never call an LLM: the pre-registered
 grid point is patched into signal.py's single PARAMS line mechanically.
 """
 
+from engine.trials import strict_loads
+from engine.errors import EngineError
+
 import ast
 import json
 import re
@@ -16,7 +19,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn
 
-from orchestrator import prompts
 from orchestrator.cli_runner import CliResult, ToolCallLog, run_logged
 
 
@@ -265,8 +267,8 @@ def validate_hypothesis_md(text: str) -> dict:
     if len(blocks) < 3:
         raise StageFailure(f"hypothesis.md has {len(blocks)} JSON blocks, need 3")
     try:
-        params, grid, criteria = (json.loads(b) for b in blocks[:3])
-    except json.JSONDecodeError as exc:
+        params, grid, criteria = (strict_loads(b) for b in blocks[:3])
+    except (json.JSONDecodeError, EngineError) as exc:
         raise StageFailure(f"hypothesis.md JSON block unparseable: {exc}") from exc
     if not isinstance(params, dict) or not params:
         raise StageFailure("Parameters block must be a non-empty dict")
@@ -277,7 +279,13 @@ def validate_hypothesis_md(text: str) -> dict:
     required = {"min_sharpe", "max_drawdown", "min_hit_rate", "min_sign_consistent_folds"}
     if not isinstance(criteria, dict) or set(criteria) != required:
         raise StageFailure(f"Kill criteria keys must be exactly {sorted(required)}")
-    return {"params": params, "grid": grid, "criteria": criteria}
+    blocks = {"params": params, "grid": grid, "criteria": criteria}
+    from engine.policy import validate_registration
+    try:
+        validate_registration(blocks)
+    except EngineError as exc:
+        raise StageFailure(str(exc)) from exc
+    return blocks
 
 
 def validate_signal_source(source: str) -> dict:
@@ -315,10 +323,12 @@ def patch_params_line(signal_path: Path, new_params: dict) -> None:
 
 def validate_decision(text: str, declared_grid: list[dict],
                       iteration_history: list[dict],
-                      expected_referee_model: str) -> dict:
+                      expected_referee_model: str, *,
+                      trusted_results: dict | None = None,
+                      hypothesis_blocks: dict | None = None) -> dict:
     try:
-        decision = json.loads(text)
-    except json.JSONDecodeError as exc:
+        decision = strict_loads(text)
+    except (json.JSONDecodeError, EngineError) as exc:
         raise StageFailure(f"decision.json unparseable: {exc}") from exc
     if not isinstance(decision, dict):
         raise StageFailure("decision.json must be a JSON object")
@@ -372,6 +382,19 @@ def validate_decision(text: str, declared_grid: list[dict],
         raise StageFailure(
             f"{decision['decision']} must have iterate_params=null, "
             f"got {decision.get('iterate_params')}")
+    if trusted_results is None or hypothesis_blocks is None:
+        raise StageFailure("binding decision requires trusted metric evidence")
+    from engine.policy import decide
+    from engine.trials import canonical
+    try:
+        expected = decide(hypothesis_blocks, trusted_results)
+    except EngineError as exc:
+        raise StageFailure(str(exc)) from exc
+    if declared_grid != hypothesis_blocks["grid"] or iteration_history != trusted_results["iteration_history"]:
+        raise StageFailure("inconsistent supplied iteration context")
+    for key in ("hypothesis_id", "iteration", "decision", "kill_reason", "criteria", "iterate_params"):
+        if canonical(decision[key]) != canonical(expected[key]):
+            raise StageFailure(f"decision.{key} contradicts deterministic policy")
     return decision
 
 

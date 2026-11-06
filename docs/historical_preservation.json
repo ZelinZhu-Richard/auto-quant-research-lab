@@ -1,0 +1,87 @@
+{
+  "baseline_commit": "059e0952a367f5e0b4ded60cafd7fd027fa835c5",
+  "files": [
+    {
+      "path": "LEDGER.md",
+      "sha256": "213774f515fa80b26ff99f34c322c7b5758d92942a659ebd59659cb1ff137e22",
+      "unchanged": true
+    },
+    {
+      "path": "SPEC.md",
+      "sha256": "3e7684cc48e3d7609ba74f6247566833166a94b19da70b34074cc02a86d065ea",
+      "unchanged": true
+    },
+    {
+      "path": "data/download_report.json",
+      "sha256": "f3751ab618505278fd892edfab9c63ca3167d2846286c9efe6c1d719cef563fe",
+      "unchanged": true
+    },
+    {
+      "path": "data/universe.json",
+      "sha256": "15f7cc2b29066b4345a20fd34cf7690d0b42b8a3c9674f31b3ae92db881ee5db",
+      "unchanged": true
+    },
+    {
+      "path": "hypotheses/H001/decision.json",
+      "sha256": "bb7c7d3a9d2eb9ba2d5437f841bf6ab18d670114d2a2ae95e5c1dc684bbc94dc",
+      "unchanged": true
+    },
+    {
+      "path": "hypotheses/H001/hypothesis.md",
+      "sha256": "acbd12ca31193267549a1c290ed71681e5145c292160cacb51bceaf2a80472e9",
+      "unchanged": true
+    },
+    {
+      "path": "hypotheses/H001/iterations.json",
+      "sha256": "c8baa271719a7752227c35b5078b2ec6d56b9a8025c81448e8b69a4ce449cc89",
+      "unchanged": true
+    },
+    {
+      "path": "hypotheses/H001/memo.md",
+      "sha256": "b6bb04bbcf4d57104d20e1b4316780dd005eabf094aa5750714111e853ff6ec4",
+      "unchanged": true
+    },
+    {
+      "path": "hypotheses/H001/results.json",
+      "sha256": "a1a6ee3da04625cb906e7b437e4f3e4e60feece908a33fd50688771866ba76b9",
+      "unchanged": true
+    },
+    {
+      "path": "hypotheses/H001/signal.py",
+      "sha256": "cf60e6a0167b13114ce46853325b3d624065ecd8ff81b6b2425101fae39f7f9d",
+      "unchanged": true
+    },
+    {
+      "path": "runs/minirun_20260712_031745/summary.json",
+      "sha256": "4f7d876115330c6f3146feaa95187d42d5b5e919b69f76fad155cc34dcecece2",
+      "unchanged": true
+    },
+    {
+      "path": "runs/minirun_20260712_031745/toolcalls.jsonl",
+      "sha256": "c5eb0d266739e4edc00cf01f205cdbd4c011db12c70b963203f57e3d26df63b1",
+      "unchanged": true
+    },
+    {
+      "path": "runs/minirun_20260712_032156/summary.json",
+      "sha256": "4a1bba88804227e108d64f5dcf2ce742d953bdbfbf5081358ca8a6d16195b1f1",
+      "unchanged": true
+    },
+    {
+      "path": "runs/minirun_20260712_032156/toolcalls.jsonl",
+      "sha256": "d4583cb2f1991bc5d303550a62c37aeead883469c588e94c8f12b7b89ef17bf7",
+      "unchanged": true
+    },
+    {
+      "path": "runs/shakedown_20260711_165247/summary.json",
+      "sha256": "d928f6ee0ad950ce4c5530f3086f2a9ab0368614e2ecec25364b898be2001dc6",
+      "unchanged": true
+    },
+    {
+      "path": "runs/shakedown_20260711_165247/toolcalls.jsonl",
+      "sha256": "a0ac04b82eedfb525c7e0ca006f9e88c9833c51f9b28a759bfc05d8c1ec627ff",
+      "unchanged": true
+    }
+  ],
+  "train_val_manifest_sha256": "885599371d82fa70ed4f1faf4b9fba6d8857aca4cbb53b7ccebc7a1ad90b1a3b",
+  "holdout_accessed": false
+}

@@ -1,5 +1,5 @@
 """Gate arbitration finding 4: one ledger line per hypothesis is an
-INVARIANT — the line count is the N feeding the deflated Sharpe. A failure
+INVARIANT — the historical ledger remains one terminal record per hypothesis. A failure
 AFTER the line is appended must halt the run, never append a second line."""
 
 from unittest import mock
@@ -40,7 +40,8 @@ def test_flag_set_before_append_in_close_cycle(tmp_path):
     loop._ledger_written = False
     decision = {"decision": "KILL", "kill_reason": "merits"}
     results = {"aggregate": {}, "referee_inputs": {}}
-    with mock.patch("orchestrator.loop.state.append_ledger",
+    with mock.patch.object(loop, "_verify_terminal_decision"), \
+         mock.patch("orchestrator.loop.state.append_ledger",
                     side_effect=OSError("disk full")):
         with pytest.raises(OSError):
             loop._close_cycle(1, "H001", "x", decision, results, True, 0)

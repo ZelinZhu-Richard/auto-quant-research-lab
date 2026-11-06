@@ -1,7 +1,6 @@
 """Guards added at the A2 review gate: unsorted panels and calendar gaps
 must fail loudly, never silently distort the no-lookahead cut or metrics."""
 
-import pandas as pd
 import pytest
 
 from engine.backtest import run_walkforward

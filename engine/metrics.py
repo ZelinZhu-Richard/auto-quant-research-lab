@@ -28,14 +28,15 @@ def sharpe_annualized(returns: pd.Series) -> float:
     return sharpe_daily(returns) * math.sqrt(ANNUALIZATION_DAYS)
 
 
-def max_drawdown(returns: pd.Series) -> float:
+def max_drawdown(returns: pd.Series, *, historical: bool = False) -> float:
     """Positive fraction: 0.25 means a -25% peak-to-trough on the
     compounded equity curve."""
     r = np.asarray(returns, dtype=float)
     if len(r) == 0:
         return 0.0
     equity = np.cumprod(1.0 + r)
-    peaks = np.maximum.accumulate(equity)
+    peaks = np.maximum.accumulate(equity) if historical else np.maximum.accumulate(
+        np.r_[1.0, equity])[1:]
     drawdowns = 1.0 - equity / peaks
     return float(drawdowns.max())
 
@@ -82,20 +83,34 @@ def deflated_sharpe(
         return 0.0
     g3, g4 = skew_and_raw_kurtosis(returns)
 
-    numeric = [s for s in trial_sharpes_daily if np.isfinite(s)]
-    if len(numeric) >= 2:
-        variance = float(np.var(numeric, ddof=1))
-    else:
-        variance = 0.0
+    return deflated_sharpe_from_moments(sr, T, g3, g4, n_trials, trial_sharpes_daily)
+
+
+def deflated_sharpe_from_moments(sr, T, g3, g4, n_trials, trial_sharpes_daily,
+                                *, variance_floor=0.0) -> float:
+    """DSR diagnostic. v2 supplies 1/(T-1) as a nonzero null variance floor.
+
+    N is a search-size proxy, NOT an estimated effective independent count.
+    The historical formula is retained with variance_floor=0 for audits.
+    """
+    if type(n_trials) is not int or n_trials < 1 or type(T) is not int or T < 2:
+        raise ValueError("invalid trial count or sample size")
+    numeric = list(trial_sharpes_daily)
+    if not numeric or any(type(x) not in (int, float) or not math.isfinite(x)
+                          for x in [sr, g3, g4, variance_floor, *numeric]):
+        raise ValueError("nonfinite or missing DSR input")
+    if len(numeric) > n_trials or variance_floor < 0:
+        raise ValueError("inconsistent DSR trial inputs")
+    variance = max(float(np.var(numeric, ddof=1)) if len(numeric) >= 2 else 0.0,
+                   variance_floor)
     if n_trials >= 2 and variance > 0.0:
         sr0 = math.sqrt(variance) * (
             (1.0 - _EULER_MASCHERONI) * _NORMAL.inv_cdf(1.0 - 1.0 / n_trials)
             + _EULER_MASCHERONI * _NORMAL.inv_cdf(1.0 - 1.0 / (n_trials * math.e))
         )
     else:
-        sr0 = 0.0  # deflation inert until >= 2 numeric trials (SPEC §7)
-
+        sr0 = 0.0
     radicand = 1.0 - g3 * sr + ((g4 - 1.0) / 4.0) * sr**2
     if radicand <= 0.0:
-        return 0.0  # pathological tails; fail-safe toward killing
+        return 0.0
     return float(_NORMAL.cdf((sr - sr0) * math.sqrt(T - 1) / math.sqrt(radicand)))

@@ -1,5 +1,19 @@
 # quantlab
 
+> **Research validity amendment (proposed):** [SPEC_v2.md](SPEC_v2.md) and
+> [the audit report](docs/RESEARCH_VALIDITY_AUDIT.md) supersede the implementation
+> claims below for new runs. The original SPEC and H001 artifacts remain frozen.
+> v1's LLM referee, hypothesis-only trial count, same-close timing, target-only
+> turnover and zero-return missing-price treatment were insufficient. H001's
+> final DSR remains 0.07815577 in its original artifact; a separate three-setting
+> sensitivity is 0.03298780. Neither establishes independent-trial calibration.
+>
+> New runs use a deterministic, evidence-verified referee, immutable per-trial
+> accounting, delayed-close research fills and drifted holdings. Live v2 runs
+> require explicit human protocol approval. This does not certify alpha or
+> investability. Sections below describe the historical v1 system unless stated.
+
+
 An autonomous multi-agent research lab that generates crypto trading
 hypotheses, implements them, backtests them against a frozen engine, and
 kills them against criteria registered before any data is touched. **The
@@ -227,14 +241,15 @@ uv sync
 uv run python scripts/fetch_train_val_data.py 2022-07-01
 uv run python data_pipeline.py universe --start 2022-07-01
 uv run python data_pipeline.py split    --cutoff 2025-07-01
-mv data/holdout ~/quantlab_holdout_DO_NOT_MOUNT   # R2: physically absent
+# Human-only: keep protected data in the project holdout sibling;
+# autonomous sessions mount only the separate working subtree.
 
 # 5-minute demo, no LLM keys: 55 tests, then two full mocked-LLM cycles
 # against the real engine and real data — ledger lines, memos, and
 # per-stage commits included.
 uv run pytest tests/
 uv run python -m orchestrator.loop --mode dry-run --max-cycles 2 --run-id demo
-git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md && git commit -m "run demo: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md
+git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/ && git commit -m "run demo: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/
 
 # One real cycle, live CLIs in the foreground (requires claude + codex
 # installed and authenticated):

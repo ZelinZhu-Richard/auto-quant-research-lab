@@ -17,7 +17,12 @@ Return day d2 (same ranks => same weights, turnover 0):
 import numpy as np
 import pandas as pd
 
-from engine.backtest import run_walkforward
+from engine.backtest import run_walkforward as _run_walkforward
+
+
+def run_walkforward(*args, **kwargs):
+    """Frozen v1 known answers; corrected v2 answers live in test_execution_v2."""
+    return _run_walkforward(*args, mode="historical_close_v1", **kwargs)
 
 D0 = pd.Timestamp("2023-01-01", tz="UTC")
 D1 = pd.Timestamp("2023-01-02", tz="UTC")

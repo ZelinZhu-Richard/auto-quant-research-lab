@@ -42,9 +42,9 @@ uv run python -m orchestrator.loop --mode live --max-cycles 1 \
 # LEDGER.md/PROMOTED_QUEUE.md included as the backstop for a post-append
 # halt: a salvaged-but-uncommitted ledger line must never be swept into
 # the next run's first commit (deflated-Sharpe N reads the ledger).
-git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md
-if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md; then
-    git commit -m "run ${RUN_ID}: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md
+git add runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/
+if ! git diff --cached --quiet -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/; then
+    git commit -m "run ${RUN_ID}: toolcall log finalized" -- runs/ STATE.md LEDGER.md PROMOTED_QUEUE.md trial_evidence/
 fi
 
 if [ "${LOOP_STATUS}" -ne 0 ]; then
